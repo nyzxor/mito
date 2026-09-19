@@ -49,6 +49,13 @@ evals-record:
 sandbox-build:
     uv run mito dev sandbox-build
 
+# Rust egress proxy (ADR-0005). Optional in DEV MODE; required for compose deploys.
+proxy-build:
+    cargo build --release --manifest-path egress-proxy/Cargo.toml
+
+proxy-test:
+    cargo test --manifest-path egress-proxy/Cargo.toml
+
 up:
     uv run mito up
 

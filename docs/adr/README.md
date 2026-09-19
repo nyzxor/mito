@@ -8,8 +8,8 @@ Status is one of `proposed` (needs operator go), `accepted`, `superseded by ADR-
 | 0001 | Python 3.12+ with uv as the primary stack | accepted |
 | 0002 | Handbrake as a separate process with a one-directional localhost API | accepted |
 | 0003 | SQLite (WAL) for ledger, audit index and memory search | accepted |
-| 0004 | Thin OpenAI-compatible client first; LiteLLM deferred | accepted |
-| 0005 | Egress: gateway API + CONNECT proxy, Python first, Rust deferred | proposed |
+| 0004 | Model gateway with two native adapters (OpenAI-compatible + Anthropic); LiteLLM rejected | accepted |
+| 0005 | Egress: Python gateway API (policy) + Rust CONNECT proxy (physics) | accepted |
 | 0006 | Sandbox: hardened Docker, fail closed without Docker | accepted |
 | 0007 | Audit chain, hash pins and signed operator commands (Ed25519 + HMAC anchors) | accepted |
 | 0008 | Skills in Agent Skills format with a `mito:` frontmatter block | accepted |

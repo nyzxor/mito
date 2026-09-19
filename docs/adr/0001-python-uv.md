@@ -22,9 +22,10 @@ so the language choice is not constrained by inference.
 Option 1. Python 3.12 minimum (we use `tomllib`, `typing` improvements, `asyncio.TaskGroup`).
 `uv` provides `uv run mito …` entry points and a cross-platform lockfile; no `pip`/`poetry`.
 
-Rust is allowed only for a component that (a) sits on the physics layer and (b) has measured
-perf or hardening needs — candidate: the egress proxy (ADR-0005), decided later with data.
-TypeScript is allowed only for the dashboard if ADR-0010 chooses React.
+Rust is used for components that sit on the **physics** layer and must hold even if the Python
+side is compromised or buggy; the first is the egress CONNECT proxy (ADR-0005, `egress-proxy/`
+Cargo workspace). Python remains the language of policy, ledger, loop and tools. TypeScript is
+allowed only for the dashboard if ADR-0010 chooses React.
 
 ## Consequences
 

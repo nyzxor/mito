@@ -30,6 +30,7 @@ Requires: Python 3.12+ via `uv`, `just`, Docker (Linux containers) for any code-
 
 ```
 handbrake/   immutable core (kill switch, policy, budgets, egress, vault, approvals, audit, integrity)
+egress-proxy/ Rust CONNECT proxy — the only component with an external route (Phase 2)
 mito/        runtime (loop, router, tools, skills, memory, metabolism, pulse, gateway, playbooks, evolve)
 policy/      hash-pinned TOML policy files
 config/      models.toml, metabolism.toml, mito.toml

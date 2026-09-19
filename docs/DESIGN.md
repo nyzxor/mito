@@ -151,6 +151,7 @@ mito/
   playbooks/                *.toml money playbooks (operator-owned)
   evals/                    golden/  safety/ (read-only to agent)  cost/  fixtures/ (recorded model traces)
   deploy/                   docker-compose*.yaml  sandbox/Dockerfile  service helpers
+  egress-proxy/             Rust CONNECT proxy (physics layer, ADR-0005); own Cargo workspace and tests
   config/                   models.toml  metabolism.toml  mito.toml (defaults; operator overrides via env/local file)
   pyproject.toml  justfile  .env.example
 ```
@@ -261,8 +262,11 @@ The sandbox has no network. Two egress paths, both inside the Handbrake:
    cache; per-domain token-bucket rate limit; honest `User-Agent: MITO/x.y (+operator contact)`),
    performs the request, scrubs secrets from the response, tags it UNTRUSTED, truncates to a
    token budget and returns it with a `more` handle.
-2. **CONNECT proxy** for the headless browser container: host-level allow/deny + SSRF check
-   only (no TLS interception). Reads only; form submission is disabled in the browser tool.
+2. **Rust CONNECT proxy** (`egress-proxy/`, separate hardened binary/container, the only thing
+   with an external default route): host-level allow/deny + SSRF/DNS-pinning + rate limits +
+   HALT sentinel, no TLS interception. Used by the browser container and, in compose, by the
+   Handbrake's own outbound client as a second check. Reads only; form submission is disabled in
+   the browser tool.
 
 Reads (GET/HEAD) to the public internet are open by default minus denylist. Writes (POST/PUT/
 DELETE, SMTP, publishing) only to `egress.toml` allowlisted destinations and only within tier
@@ -351,13 +355,19 @@ Tiers: **L0** no LLM (rules, SQL, regex, cron) · **L1** local (llama.cpp/Ollama
 OpenAI-compatible, default `http://127.0.0.1:8080/v1`) · **L2** cheap cloud · **L3** frontier
 (rare, justified in the request, rate-limited).
 
-No hard-coded model names. `config/models.toml` declares, per entry: provider, base URL,
-price per 1M input/output/cached tokens, context window, capabilities (tools, json_schema,
-vision, cache), tier. The router picks from task class (`classify`, `extract`, `draft`,
-`plan`, `review`, `code`) × metabolic state × required capabilities, and escalates only on failed
-verification (max 2 escalations per task). Local calls get an ATP price from
-`metabolism.toml` (`watts × seconds × kWh_price + amortization_per_hour`). We start with a thin
-OpenAI-compatible client (ADR-0004); LiteLLM is adopted only if a second wire format is needed.
+No hard-coded model names. `config/models.toml` declares, per entry: provider
+(`openai_compatible` | `anthropic`), base URL, credential handle, price per 1M input/output/
+cached tokens, context window, capabilities (tools, json_schema, parallel_tools, cache_explicit,
+cache_auto, thinking, vision), param table, tier. The router picks from task class (`classify`,
+`extract`, `draft`, `plan`, `review`, `code`) × metabolic state × required capabilities, and
+escalates only on failed verification (max 2 escalations per task). Local calls get an ATP price
+from `metabolism.toml` (`watts × seconds × kWh_price + amortization_per_hour`).
+
+The stack is hybrid by design (ADR-0004): one `ModelGateway.call` with an internal message IR and
+two thin native adapters — `OpenAICompatAdapter` (llama.cpp, Ollama `/v1`, OpenRouter/DeepSeek/
+Groq/OpenAI…) and `AnthropicAdapter` (Messages API with `cache_control` breakpoints and verbatim
+thinking-block round-trips). No LiteLLM, no provider SDKs. Every configured model must pass the
+tool-use eval before the router may select it.
 
 Prompt caching: stable prefix ordering `system → tool definitions → skills index → memory
 summary → [breakpoint] → state snapshot → history → turn`; no timestamps/UUIDs in the prefix;
@@ -491,10 +501,12 @@ audit tail, big red kill button (ADR-0010).
 
 ## 14. Deployment
 
-Dev: Windows 11 / Arch / Debian, `uv run mito …`, Docker (Desktop on Windows) for sandboxes.
-24/7: Docker Compose on a small VPS (Dokploy + Cloudflare Tunnel), Handbrake and runtime in
-separate containers and users, internal network only, no public ports, every control surface
-on `127.0.0.1`. Snapshots to an operator-configured destination.
+Dev: Windows 11 / Arch / Debian, `uv run mito …`, Docker (Desktop on Windows) for sandboxes,
+`cargo` for the egress proxy (optional in DEV MODE; its absence is reported).
+24/7: Docker Compose on a small VPS (Dokploy + Cloudflare Tunnel): `handbrake`, `runtime`,
+`egress-proxy` (the only container with an external route), sandbox/browser containers on
+demand; separate users, internal network only, no public ports, every control surface on
+`127.0.0.1`. Snapshots to an operator-configured destination.
 
 ## 15. Phased plan and gates
 

@@ -1,43 +1,69 @@
-# ADR-0004: Thin OpenAI-compatible client first; LiteLLM deferred
+# ADR-0004: Model gateway with two native adapters (OpenAI-compatible + Anthropic); LiteLLM rejected
 
-Status: accepted · Date: 2026-09-18
+Status: accepted (revised 2026-09-19 after operator input) · Date: 2026-09-18
 
 ## Context
 
-Tiers L1 (llama.cpp/Ollama), L2 (cheap cloud) and L3 (frontier) must be reachable with metering,
-prompt-cache awareness and a record/replay mode for tests. The guide (Ch 06) recommends a
-gateway for the commodity 80% but warns that "OpenAI-compatible" ends at tool calls and
-streaming, and that gateways can strip provider-native state (thinking blocks, cache controls).
+The operator will run a **hybrid** model stack from day one:
+
+- **Local (L1)**: Ollama or llama.cpp server. Both expose an OpenAI-compatible
+  `/v1/chat/completions` (llama.cpp `llama-server`; Ollama at `/v1`). Ollama also has its
+  native `/api/chat`; we do not need it. *To verify in Phase 3 against the installed versions:
+  tool-calling reliability and `usage` reporting differ per server/model (guide Ch 06 rule 10).*
+- **Cloud OpenAI-compatible (L2/L3)**: OpenRouter, DeepSeek, Groq, Mistral, OpenAI, etc.
+- **Anthropic (L2/L3)**: native Messages API, with features we must not flatten: `tool_use` /
+  `tool_result` content blocks, all parallel results in one user message, explicit prompt-cache
+  breakpoints (`cache_control`), thinking blocks that must be echoed back verbatim.
+
+The guide (Ch 06) warns that "OpenAI-compatible" ends at tool calls and streaming, and that
+gateways which normalize everything silently strip provider-native state.
 
 ## Options
 
-1. **LiteLLM**: broad provider coverage, cost tables, but a heavy dependency (large transitive
-   tree, frequent releases) and a second place where model names/prices live.
-2. **Provider SDKs** (openai, anthropic, google): three wire formats, three SDKs.
-3. **Thin `httpx` client** for the OpenAI-compatible wire format (chat completions with tools,
-   streaming with `include_usage`), our own message IR, per-model param table from
-   `config/models.toml`, our own price table (single source of truth), record/replay built in.
+1. **LiteLLM** for everything: broad coverage, but a heavy dependency tree, a second source of
+   truth for model names/prices, and documented gaps for Anthropic extended thinking + tools.
+2. **Provider SDKs** (`openai`, `anthropic`): two SDKs, two dependency trees, ~fine but each SDK
+   brings its own retry/streaming semantics we would have to wrap anyway.
+3. **Own message IR + two thin `httpx` adapters** behind one `ModelGateway.call`:
+   `OpenAICompatAdapter` (local + cloud OpenAI-shaped) and `AnthropicAdapter` (native Messages
+   API). Per-model param table and prices in `config/models.toml`; record/replay built into the
+   gateway, above the adapters, so fixtures are adapter-agnostic.
 
 ## Decision
 
-Option 3 for Phase 1–3. Rationale: L1 is OpenAI-compatible by definition; most L2 providers
-(OpenRouter, DeepSeek, Groq, Mistral, OpenAI) speak it; and `models.toml` must hold prices
-anyway for the ATP ledger, so LiteLLM's cost tables would be a second source of truth.
+Option 3. Rationale: the ledger needs our own price table anyway; two wire formats are a bounded
+amount of code (~300 lines each incl. streaming accumulators) that we fully own and test; native
+Anthropic caching and thinking round-trips are exactly the things a normalizing gateway loses.
+Adding a third adapter (e.g., Gemini) is deliberate work behind the same interface.
 
-Adopt an Anthropic-native adapter (or LiteLLM) only when an L3 model that needs native features
-(thinking blocks, explicit cache breakpoints) is actually configured — that is a routing
-decision the operator makes in `models.toml`, and the adapter is added behind the same
-`ModelGateway.call`.
+Shape:
+
+```
+ModelGateway.call(request: ModelRequest) -> ModelResponse     # the ONLY model entry point
+  ├─ router picks model id (tier × task class × metabolic state × capabilities)
+  ├─ budget pre-flight (Handbrake) → grant + meter id
+  ├─ replay/record layer (hash of model id + canonical IR)
+  ├─ adapter = adapters[model.provider]   # "openai_compatible" | "anthropic"
+  │     render IR → wire; stream; accumulate tool-call fragments; parse usage + cache stats
+  └─ reconcile (Handbrake posts cost to ledger) ; audit
+```
+
+IR rules: messages are our own dataclasses; provider-specific opaque state (Anthropic thinking
+blocks with signatures) is carried as an opaque `provider_state` field and echoed by the same
+adapter only; caches are per model — the router never swaps models mid-session (spawn a subagent
+instead).
+
+Capability flags in `models.toml` drive rendering: `tools`, `json_schema`, `parallel_tools`,
+`cache_explicit` (Anthropic breakpoints), `cache_auto` (OpenAI prefix), `thinking`, `vision`,
+and the param table (`temperature_allowed`, `max_tokens_name`).
 
 ## Consequences
 
-- We own the tool-call fragment accumulator for streaming (guide impl-01 §5) and test chunk
-  boundaries.
-- Per-model param table (`temperature` allowed?, `max_tokens` name, `parallel_tool_calls`)
-  lives in `models.toml`.
-- Record/replay: requests are hashed (model + canonical messages + tools); fixtures in
-  `evals/fixtures/`; unrecorded requests fail in CI.
+- Phase 1 ships `OpenAICompatAdapter` + `ScriptedModel`/`ReplayModel`; Phase 3 ships
+  `AnthropicAdapter` and the local-tier verification suite (tool-use eval per configured model).
+- We own and test streaming chunk-boundary cases for both formats.
+- Every configured model must pass the tool-use eval before the router may select it.
 
 ## Dependency cost
 
-`httpx` (already required by ADR-0002). No SDKs.
+`httpx` only (already required). No `openai`, `anthropic` or `litellm` packages.

@@ -157,7 +157,8 @@ follow-up is C. Recommendation: ship `email.read` in Phase 4 with a dedicated Ma
    in principle tamper with `control/`. Mitigated by A1 cap, integrity checks and DEV MODE
    banner; not eliminated. Production posture is Linux containers with separate users.
 2. **Browser container** cannot have URL-path-level policy without TLS interception; we accept
-   host-level control plus no-form-submit.
+   host-level control (Rust CONNECT proxy: SSRF pinning, allow/deny, rate limits, HALT) plus
+   no-form-submit.
 3. **Local inference server** is trusted (localhost). If the operator points MITO at a remote
    OpenAI-compatible endpoint, prompt contents leave the machine — documented in RUNBOOK.
 4. **Prompt injection in general** is not solved; controls bound the blast radius (Rule of Two,

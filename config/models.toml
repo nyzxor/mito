@@ -1,6 +1,8 @@
 # Model registry (DESIGN §7, ADR-0004). No model names are hard-coded anywhere else.
 # Prices are USD per 1M tokens and feed the ATP ledger. Keys are credential HANDLES (vault), never secrets.
-# Phase 0 DRAFT — the operator fills real entries in Phase 3.
+# provider = "openai_compatible" (llama.cpp, Ollama /v1, OpenRouter, DeepSeek, Groq, OpenAI, ...)
+#          | "anthropic"         (native Messages API: cache_control breakpoints, thinking round-trip)
+# Phase 0 DRAFT — the operator fills real entries in Phase 3; every entry must pass the tool-use eval.
 schema_version = 1
 
 [router]
@@ -14,11 +16,12 @@ plan     = ["L1", "L2", "L3"]
 review   = ["L2", "L3"]
 code     = ["L1", "L2", "L3"]
 
+# ---- L1: local -------------------------------------------------------------------------------
 [[model]]
-id = "local-default"
+id = "local-llamacpp"
 tier = "L1"
 provider = "openai_compatible"
-base_url_env = "MITO_LOCAL_BASE_URL"     # default http://127.0.0.1:8080/v1
+base_url_env = "MITO_LOCAL_BASE_URL"     # default http://127.0.0.1:8080/v1 (llama-server)
 model = "default"                         # llama.cpp serves whatever is loaded
 context_window = 32768
 price_in = 0.0                            # local: priced via metabolism.toml electricity model
@@ -27,7 +30,19 @@ capabilities = ["tools", "json_schema"]
 params = { temperature = 0.2, max_tokens_name = "max_tokens", parallel_tool_calls = false }
 
 # [[model]]
-# id = "cheap-cloud-1"
+# id = "local-ollama"
+# tier = "L1"
+# provider = "openai_compatible"
+# base_url = "http://127.0.0.1:11434/v1"
+# model = "<tag>"
+# context_window = 32768
+# price_in = 0.0
+# price_out = 0.0
+# capabilities = ["tools", "json_schema"]
+
+# ---- L2: cheap cloud -------------------------------------------------------------------------
+# [[model]]
+# id = "cheap-openrouter"
 # tier = "L2"
 # provider = "openai_compatible"
 # base_url = "https://openrouter.ai/api/v1"
@@ -37,9 +52,34 @@ params = { temperature = 0.2, max_tokens_name = "max_tokens", parallel_tool_call
 # price_in = 0.15
 # price_out = 0.60
 # price_cached_in = 0.075
-# capabilities = ["tools", "json_schema", "cache"]
+# capabilities = ["tools", "json_schema", "cache_auto"]
 
 # [[model]]
-# id = "frontier-1"
+# id = "cheap-anthropic"
+# tier = "L2"
+# provider = "anthropic"
+# base_url = "https://api.anthropic.com"
+# credential = "cred:anthropic"
+# model = "<fill in>"
+# context_window = 200000
+# price_in = 0.80
+# price_out = 4.00
+# price_cached_in = 0.08
+# price_cache_write = 1.00
+# capabilities = ["tools", "json_schema", "parallel_tools", "cache_explicit", "vision"]
+# params = { max_tokens_name = "max_tokens", temperature_allowed = true }
+
+# ---- L3: frontier (rare, justified, rate-limited) -------------------------------------------
+# [[model]]
+# id = "frontier-anthropic"
 # tier = "L3"
-# ...
+# provider = "anthropic"
+# credential = "cred:anthropic"
+# model = "<fill in>"
+# context_window = 200000
+# price_in = 3.00
+# price_out = 15.00
+# price_cached_in = 0.30
+# price_cache_write = 3.75
+# capabilities = ["tools", "json_schema", "parallel_tools", "cache_explicit", "thinking", "vision"]
+# params = { max_tokens_name = "max_tokens", temperature_allowed = false }

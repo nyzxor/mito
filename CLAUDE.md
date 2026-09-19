@@ -57,6 +57,7 @@ uv run mito skills quarantine list|approve | policy sign | vault add <handle> | 
 
 ```
 handbrake/   kill leash policy budget egress vault approval audit integrity api tests   (pinned)
+egress-proxy/ Rust CONNECT proxy: physics layer, own Cargo workspace (Phase 2)          (pinned)
 mito/        loop router tools skills_rt memory metabolism pulse gateway playbooks evolve cli
 policy/      policy.toml egress.toml risk_tiers.toml blacklist.toml                    (pinned)
 config/      models.toml metabolism.toml mito.toml   (+ untracked local.toml)
@@ -75,6 +76,9 @@ in the repo.
   `unit handbrake wiring smoke safety docker chaos`.
 - Dependencies need an ADR (or a one-line justification in `pyproject.toml` pointing to one).
   Current runtime deps: httpx, uvicorn, pydantic, cryptography, keyring. Nothing else without an ADR.
+- Models: hybrid stack via one `ModelGateway.call` with two native adapters, `openai_compatible`
+  (llama.cpp, Ollama `/v1`, cloud) and `anthropic` (Messages API). No LiteLLM, no provider SDKs.
+- Rust only on the physics layer (`egress-proxy/`); Python for policy, loop, tools.
 - Tools: pydantic model per tool = schema **and** validator; description written as onboarding
   docs (what, when, when not, format, example); concise default output; `truncated` marker with a
   `more` handle; errors are retry instructions; declare `risk_tier`, `idempotent`, `reversible`,
