@@ -1,0 +1,34 @@
+# Risk tiers T0–T5 (DESIGN §8). Every tool must appear exactly once. Hash-pinned.
+schema_version = 1
+
+[T0]
+description = "read-only, no effects"
+tools = ["time", "status", "ledger.read", "memory.search", "memory.read", "skills.list", "skills.read", "tool_search"]
+
+[T1]
+description = "sandbox-local, reversible"
+tools = ["fs.read", "fs.write", "fs.list", "code.run", "shell", "git.local", "pdf.extract", "ocr", "data.query", "image.transform"]
+
+[T2]
+description = "external read (outputs are UNTRUSTED)"
+tools = ["web.search", "web.fetch", "browser.navigate", "browser.extract", "http.get", "rss.read", "email.read", "github.read", "mcp.read"]
+
+[T3]
+description = "external write, reversible, low blast radius"
+tools = ["email.draft", "http.post", "git.push", "publish.draft", "notify.human", "memory.write", "skill.propose", "schedule.propose", "spawn_subagent"]
+
+[T4]
+description = "approval every time"
+tools = ["email.send", "publish.public", "pr.submit", "deploy", "allowlist.add", "skill.promote_t3plus", "settings.change"]
+
+[T5]
+description = "forbidden — not implemented"
+tools = ["account.create", "captcha.solve", "payment.*", "credential.enter", "host.shell", "self.replicate", "logs.disable"]
+
+[sensitivity]
+# Tools whose use sets trifecta flag B (sensitive data).
+B = ["email.read", "memory.read:private", "github.read:private"]
+
+[taint_out]
+# Provenance lane of each tool's output. Unlisted tools emit TOOL_TRUSTED.
+UNTRUSTED = ["web.search", "web.fetch", "browser.extract", "http.get", "rss.read", "email.read", "github.read", "mcp.read", "pdf.extract", "ocr"]

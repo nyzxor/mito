@@ -1,0 +1,38 @@
+# Egress policy (ADR-0005). Hash-pinned. Reads to the public internet are open by default minus
+# the denylist; writes only to allow_write. Adding an entry is T4 (operator, signed).
+schema_version = 1
+
+[reads]
+schemes = ["https", "http"]
+max_response_bytes = 5_000_000
+max_redirects = 5
+per_host_min_interval_ms = 2000
+per_host_burst = 3
+global_concurrency = 4
+respect_robots_txt = true
+user_agent = "MITO/{version} (+{operator_contact_url})"
+content_types = ["text/html", "text/plain", "application/json", "application/xml", "text/xml", "application/rss+xml", "application/atom+xml", "application/pdf"]
+
+[ssrf]
+# Resolve once, check every resolved address, pin the connection, re-check on redirects.
+block_cidrs = [
+  "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+  "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/4",
+  "240.0.0.0/4", "::1/128", "fc00::/7", "fe80::/10", "::ffff:0:0/96",
+]
+block_hosts = ["localhost", "metadata.google.internal", "169.254.169.254"]
+
+[denylist]
+hosts = []
+
+# Destinations that accept write methods (POST/PUT/DELETE, SMTP). Empty in Phase 0.
+# [[allow_write]]
+# host = "api.github.com"
+# methods = ["POST"]
+# paths = ["/repos/<owner>/*/pulls"]
+# tier = "T4"
+
+[browser]
+# CONNECT proxy for the browser container: host-level only, no interception.
+allow_ports = [80, 443]
+form_submit = false

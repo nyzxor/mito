@@ -1,0 +1,39 @@
+# Metabolism (DESIGN §6). Budget limits here are hash-pinned together with policy/.
+# Phase 0 DRAFT — defaults to be confirmed by the operator.
+schema_version = 1
+
+[atp]
+per_usd = 1000                 # 1,000 ATP = US$1
+floor = 0                      # balance <= floor -> DEEP_REST
+wake_threshold = 3000
+min_topup = 100
+
+[budgets_usd]
+per_call_max = 0.05
+per_task = 0.25
+per_hour = 0.25
+per_day = 1.00
+per_month_cloud = 15.00
+frontier_calls_per_day = 5
+
+[runway_days]
+thriving_above = 14
+normal_above = 7
+frugal_above = 2
+# below frugal_above -> STARVING
+
+[pulse]
+base_interval_s = 900          # 15 min in THRIVING/NORMAL
+frugal_multiplier = 2
+starving_multiplier = 4
+
+[local_pricing]
+# ATP price of local inference so the router compares tiers honestly.
+gpu_watts = 300
+host_watts = 120
+kwh_price_usd = 0.15
+amortization_usd_per_hour = 0.05
+# effective usd/s = ((gpu_watts + host_watts)/1000 * kwh_price_usd)/3600 + amortization_usd_per_hour/3600
+
+[notices]
+topup_notice_per_state_entry = 1   # one neutral, factual notice; no begging loops

@@ -1,0 +1,36 @@
+# Runtime defaults (non-policy). Override with env (MITO_*) or config/local.toml (untracked).
+schema_version = 1
+
+[identity]
+name = "MITO"
+discloses_ai = true
+operator_contact_url = ""      # used in the egress User-Agent
+
+[loop]
+max_steps = 16
+max_tool_calls = 32
+max_wall_seconds = 180
+max_write_actions = 3
+max_consecutive_failures = 3
+tool_result_max_tokens_default = 2000
+
+[context]
+l0_constitution_max_tokens = 3000
+compaction_keep_last = 8
+compaction_trigger_tokens = 30000
+
+[skills]
+roots = ["skills", "skills/.managed", "mito/skills_rt/bundled"]   # precedence high -> low
+catalog_max_tokens_per_skill = 100
+body_max_tokens = 5000
+
+[memory]
+index_max_lines = 200
+default_ttl_days = 180
+
+[own_repos]
+# Repos MITO may push to (own branches only). Filled by the operator.
+github = []
+
+[channels]
+operator_ids = { discord = [], telegram = [] }

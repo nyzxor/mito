@@ -1,0 +1,31 @@
+# Playbook: gig-fulfillment. Jobs the operator already accepted; MITO produces the deliverable,
+# a verifier and a citation gate check it, the operator reviews and delivers. A0/A1 only.
+schema_version = 1
+name = "gig-fulfillment"
+autonomy_max = "A1"
+enabled = false
+
+[scope]
+job_types = ["transcription", "translation", "data_cleaning", "scraping_within_tos", "research_brief_with_citations"]
+
+[tools]
+required = ["fs.read", "fs.write", "code.run", "data.query", "pdf.extract", "ocr", "web.fetch", "web.search", "memory.search"]
+max_tier_auto = "T2"
+
+[verification]
+research_brief = "cite_or_abstain"      # mechanical span check, default-deny uncited claims
+data_cleaning = "schema_and_row_counts"
+transcription = "wer_sample_check"
+translation = "back_translation_spot_check"
+
+[economics]
+cost_cap_usd_per_job = 0.25
+
+[approvals]
+delivery = "operator"           # MITO never delivers to the client in v1
+
+[legal]
+notes = "Scraping only where ToS permits and no login is required. Client data stays in the workspace; never written to memory."
+
+[kill_criteria]
+max_concurrent_jobs = 2

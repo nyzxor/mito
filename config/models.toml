@@ -1,0 +1,45 @@
+# Model registry (DESIGN §7, ADR-0004). No model names are hard-coded anywhere else.
+# Prices are USD per 1M tokens and feed the ATP ledger. Keys are credential HANDLES (vault), never secrets.
+# Phase 0 DRAFT — the operator fills real entries in Phase 3.
+schema_version = 1
+
+[router]
+escalation_max = 2
+frontier_calls_per_day = 5
+# task class -> preferred tier order (router still respects metabolic state)
+classify = ["L0", "L1"]
+extract  = ["L1", "L2"]
+draft    = ["L1", "L2"]
+plan     = ["L1", "L2", "L3"]
+review   = ["L2", "L3"]
+code     = ["L1", "L2", "L3"]
+
+[[model]]
+id = "local-default"
+tier = "L1"
+provider = "openai_compatible"
+base_url_env = "MITO_LOCAL_BASE_URL"     # default http://127.0.0.1:8080/v1
+model = "default"                         # llama.cpp serves whatever is loaded
+context_window = 32768
+price_in = 0.0                            # local: priced via metabolism.toml electricity model
+price_out = 0.0
+capabilities = ["tools", "json_schema"]
+params = { temperature = 0.2, max_tokens_name = "max_tokens", parallel_tool_calls = false }
+
+# [[model]]
+# id = "cheap-cloud-1"
+# tier = "L2"
+# provider = "openai_compatible"
+# base_url = "https://openrouter.ai/api/v1"
+# credential = "cred:openrouter"
+# model = "<fill in>"
+# context_window = 128000
+# price_in = 0.15
+# price_out = 0.60
+# price_cached_in = 0.075
+# capabilities = ["tools", "json_schema", "cache"]
+
+# [[model]]
+# id = "frontier-1"
+# tier = "L3"
+# ...

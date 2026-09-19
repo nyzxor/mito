@@ -1,0 +1,33 @@
+# Playbook: bounty-scout (DESIGN §10). Deterministic workflow + optional agent steps. A0/A1 only.
+schema_version = 1
+name = "bounty-scout"
+autonomy_max = "A1"
+enabled = false                # operator enables after Phase 6
+
+[scope]
+# Sources are RSS/GitHub queries the operator approves. Security bounty programs only with
+# explicit written go-ahead and in-scope targets, listed here by the operator.
+sources = []                   # e.g. ["rss:https://…", "github:label:bounty"]
+security_programs = []         # empty = none
+
+[tools]
+required = ["rss.read", "github.read", "web.fetch", "code.run", "git.local", "git.push", "memory.write", "notify.human"]
+max_tier_auto = "T2"           # T3 (git.push) needs approval at A1
+
+[economics]
+expected_value_usd_min = 20
+cost_cap_usd_per_opportunity = 0.10
+time_to_cash_days_max = 45
+
+[scoring]
+threshold = 0.6                # weighted EV/cost/time/confidence/legal/reversibility
+
+[approvals]
+submit_pr = "T4"               # operator submits; MITO drafts
+
+[legal]
+notes = "Payout goes to the operator's accounts only. No participation where automation is disallowed by the program's rules."
+
+[kill_criteria]
+max_opportunities_per_day = 5
+stop_if_zero_verified_income_after_days = 60

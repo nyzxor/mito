@@ -1,0 +1,6 @@
+# Normalize line endings across Windows/Linux (ADR-0014: cross-platform always).
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.sqlite binary

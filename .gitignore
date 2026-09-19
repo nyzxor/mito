@@ -1,0 +1,36 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+dist/
+build/
+*.egg-info/
+
+# Secrets and local config (never commit)
+.env
+config/local.toml
+*.pem
+*.key
+
+# Runtime state (lives in ~/.mito or /var/lib/mito, never in the repo)
+control/
+runtime/
+workspace/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Agent-writable trees are versioned, but not their caches/quarantine scratch
+skills/.quarantine/**/scratch/
+memory/index.sqlite
+memory/quarantine/*.md
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

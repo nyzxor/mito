@@ -1,0 +1,21 @@
+# Hard blacklist (Prime Directive 2, DESIGN §10). Policy-level deny with no `ask` path and no
+# override. Covered by evals/safety/. Hash-pinned. The categories are matched by tool, by
+# playbook declaration, and by deterministic classifiers on proposed actions (advisory signals
+# still deny when a category is explicitly declared by a playbook or skill).
+schema_version = 1
+
+categories = [
+  "fraud", "scam", "phishing", "spam",
+  "fake_reviews_or_engagement", "sockpuppets", "impersonation",
+  "captcha_or_bot_detection_evasion", "scraping_behind_login_against_tos", "account_farming",
+  "credential_stuffing", "unauthorized_scanning_or_pentesting", "malware", "ddos",
+  "doxxing_or_profiling_private_individuals", "market_manipulation",
+  "autonomous_trading_or_gambling", "cryptojacking_or_foreign_compute",
+  "copyright_infringement", "adult_content", "anything_involving_minors",
+]
+
+# Tools that are never implemented (T5) — listed again so the deny is explicit at gate level.
+tools = ["account.create", "captcha.solve", "payment.*", "credential.enter", "host.shell", "self.replicate", "logs.disable"]
+
+# Destinations never contacted regardless of tier (examples; extend by signed change).
+egress_hosts = ["*.onion"]

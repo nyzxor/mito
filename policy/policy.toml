@@ -1,0 +1,69 @@
+# MITO policy — hash-pinned (ADR-0007). Changes require `mito policy sign` by the operator.
+# Evaluation: deny -> ask -> allow, first match wins, default deny. Specificity never reorders.
+# Rules match tool names (glob) and optional parameter predicates. Prefer narrower tools over
+# argument globs (guide Ch 03). This file is a Phase 0 DRAFT; Phase 1 implements the engine.
+
+schema_version = 1
+
+[defaults]
+# Verdict when no rule matches, by risk tier (policy/risk_tiers.toml).
+T0 = "allow"
+T1 = "allow"
+T2 = "allow"
+T3 = "ask"
+T4 = "ask"
+T5 = "deny"
+
+[autonomy]
+# What the autonomy ladder auto-allows without an approval card.
+A0 = []                        # shadow: everything simulated
+A1 = ["T0", "T1", "T2"]        # supervised (default)
+A2 = ["T0", "T1", "T2", "T3"]  # bounded
+# A3 does not exist.
+
+# ---- deny rules (evaluated first; blacklist.toml is merged here and cannot be overridden) ----
+[[rule]]
+kind = "deny"
+tool = "fs.*"
+where = { path_outside_workspace = true }
+reason = "filesystem tools are confined to the run workspace"
+
+[[rule]]
+kind = "deny"
+tool = "*"
+where = { target_path_prefix = ["handbrake/", "policy/", "evals/safety/", "control/"] }
+reason = "immutable trees"
+
+[[rule]]
+kind = "deny"
+tool = "http.post"
+where = { url_host_not_in_allowlist = true }
+reason = "writes only to egress.toml allow_write destinations"
+
+# ---- ask rules ----
+[[rule]]
+kind = "ask"
+tool = "email.send"
+reason = "external communication"
+
+[[rule]]
+kind = "ask"
+tool = "spawn_subagent"
+where = { metabolic_state_in = ["FRUGAL", "STARVING"] }
+reason = "no subagents when frugal"
+
+# ---- allow rules ----
+[[rule]]
+kind = "allow"
+tool = "git.push"
+where = { repo_in = "config:own_repos" }
+reason = "own repos/branches only (T3, still subject to autonomy level)"
+
+[trifecta]
+# Rule of Two (ADR-0016). Max two of A (untrusted in), B (sensitive data), C (external effect).
+max_flags = 2
+on_third = "ask"               # ask | fresh_subsession
+
+[leash]
+ttl_hours = 72
+on_expiry = ["demote_one_level", "deep_rest_after_second_ttl"]

@@ -1,0 +1,20 @@
+# Playbook: cost-optimizer. Audits MITO's own burn and proposes savings (income-equivalent).
+schema_version = 1
+name = "cost-optimizer"
+autonomy_max = "A1"
+enabled = true                 # safe to run from Phase 3
+
+[tools]
+required = ["ledger.read", "memory.write", "notify.human", "skill.propose"]
+max_tier_auto = "T0"
+
+[schedule]
+cron = "0 4 * * *"             # daily 04:00 local, L0/L1 only
+
+[analysis]
+metrics = ["cost_per_outcome", "cache_hit_ratio", "tier_mix", "no_progress_events", "pulses_without_signal"]
+propose = ["routing_tweak", "prompt_trim", "pulse_interval", "skill_from_repeat"]
+
+[economics]
+savings_count_as_income = true
+min_savings_usd_per_month_to_report = 0.50
