@@ -5,8 +5,8 @@ Status: accepted · Date: 2026-09-18
 ## Context
 
 CLI surface: `status | halt | rest | wake | approve | deny | ledger confirm | autonomy set |
-audit verify | evolve review | skills quarantine list|approve | policy sign | vault add |
-checkin | up | init | dev <task>`. ~15 subcommands, flat, mostly one-shot.
+audit verify | evolve review | skills quarantine list|approve | memory confirm |
+policy sign | vault add | checkin | up | init | dev <task>`. ~15 subcommands, flat, mostly one-shot.
 
 ## Options
 

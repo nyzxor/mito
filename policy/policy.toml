@@ -1,7 +1,7 @@
 # MITO policy — hash-pinned (ADR-0007). Changes require `mito policy sign` by the operator.
 # Evaluation: deny -> ask -> allow, first match wins, default deny. Specificity never reorders.
 # Rules match tool names (glob) and optional parameter predicates. Prefer narrower tools over
-# argument globs (guide Ch 03). This file is a Phase 0 DRAFT; Phase 1 implements the engine.
+# argument globs (guide Ch 03). Write allowlist comes from egress.toml (Phase 2).
 
 schema_version = 1
 

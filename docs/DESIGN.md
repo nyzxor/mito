@@ -1,6 +1,6 @@
 # MITO — Design
 
-Status: Phase 1 complete (Handbrake core + fake-model loop). Owner: the operator (Guilherme).
+Status: Phase 5 complete (pulse, dashboard, Telegram, email allowlist). Owner: the operator (Guilherme).
 Last updated: 2026-09-24.
 
 MITO is a self-hosted, cost-frugal, self-improving autonomous agent **harness** with an economic
@@ -525,7 +525,9 @@ Accepted 2026-09-24 with the Phase 1 "go":
 - Budgets and ATP as in `config/metabolism.toml` (1,000 ATP = US$1; local priced at
   300 W GPU + 120 W host, US$0.15/kWh).
 - Operator commands signed with Ed25519 in the OS keyring (`mito init`).
-- Email: Phase 4, dedicated mailbox, `email.draft` yes, `email.send` only to approved recipients.
+- Email: accepted for Phase 4; deferred to Phase 5 with Pulse (dedicated mailbox,
+  `email.draft` yes, `email.send` only to approved recipients). The Phase 4 gate is
+  memory / skills / MCP.
 - Operator chat channel (Phase 5): Telegram first.
 - Production host: Dokploy VPS compose; Windows/Arch/Debian remain DEV MODE.
 

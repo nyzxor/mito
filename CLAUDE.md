@@ -50,7 +50,8 @@ just evals-record             record replay fixtures (spends budget; never in CI
 uv run mito --help            operator CLI surface
 uv run mito status | halt [--soft|--hard|--panic] | rest | wake | approve <id> | deny <id>
 uv run mito ledger confirm <id> | autonomy set <A0|A1|A2> | audit verify | evolve review
-uv run mito skills quarantine list|approve | policy sign | vault add <handle> | checkin | up | init
+uv run mito skills quarantine list|approve | memory confirm <name> | policy sign
+uv run mito vault add <handle> | checkin | up | init
 ```
 
 ## Layout
@@ -104,4 +105,4 @@ in the repo.
 
 Each phase ends with: tests green → PT-BR report (what was built, which tests prove it, what is
 still risky, what the phase's model runs cost, next decision) → wait for the operator's "go".
-Current phase: **1 (Handbrake core) complete**. Next: **2 Sandbox and toolbelt**.
+Current phase: **5 (Pulse and channels) complete**. Next: **6 Evals, evolution, playbooks**.

@@ -1,0 +1,19 @@
+[package]
+name = "mito-egress-proxy"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "MITO physics-layer CONNECT proxy (ADR-0005). No TLS interception."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "fs", "time"] }
+
+[lib]
+name = "mito_egress_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mito-egress-proxy"
+path = "src/main.rs"

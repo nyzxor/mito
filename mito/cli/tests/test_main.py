@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ REQUIRED_SURFACE = {
     "audit",
     "evolve",
     "skills",
+    "memory",
     "policy",
     "vault",
     "checkin",
@@ -35,6 +37,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = make_repo(tmp_path / "repo")
     monkeypatch.setenv("MITO_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("MITO_OPERATOR_KEY_FILE", str(tmp_path / "opkey"))
+    monkeypatch.setenv("MITO_VAULT_KEY_FILE", str(tmp_path / "vault.key"))
     monkeypatch.setenv("MITO_HANDBRAKE_BIND", "127.0.0.1:1")  # nothing listens: CLI goes in-process
     monkeypatch.setattr(cli, "repo_root", lambda: repo)
     import mito.cli.operator as op
@@ -139,5 +142,76 @@ def test_approve_lists_and_resolves_prefix(env: Path, capsys: pytest.CaptureFixt
 
 
 def test_not_yet_commands_fail_loudly(env: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["ledger", "confirm", "x"]) == 2
-    assert "Phase 3" in capsys.readouterr().err
+    assert cli.main(["evolve", "review"]) == 2
+    assert "Phase 6" in capsys.readouterr().err
+
+
+def test_skills_quarantine_list_and_approve(
+    env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = """---
+name: draft
+description: A quarantined skill.
+version: 0.1.0
+mito:
+  tools_required: [memory.search]
+  risk_tier: T0
+  origin: quarantine
+---
+## Procedure
+Search.
+"""
+    dest = env / "skills" / ".quarantine" / "draft" / "SKILL.md"
+    dest.parent.mkdir(parents=True)
+    dest.write_text(skill, encoding="utf-8")
+    assert cli.main(["skills", "quarantine", "list"]) == 0
+    assert "draft" in capsys.readouterr().out
+    assert cli.main(["skills", "quarantine", "approve", "draft"]) == 0
+    assert (env / "skills" / "draft" / "SKILL.md").is_file()
+    capsys.readouterr()
+    assert cli.main(["skills", "quarantine", "list"]) == 0
+    # source file remains in quarantine; list still sees it
+    assert "draft" in capsys.readouterr().out
+
+
+def test_memory_confirm_lifts_quarantine(
+    env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from handbrake.paths import MitoPaths
+
+    from mito.memory.store import MemoryStore
+
+    cli.main(["init"])
+    store = MemoryStore(MitoPaths.from_env().runtime / "memory")
+    store.write("note", "hello", source="agent", run_id="s", flags=["A"])
+    capsys.readouterr()
+    assert cli.main(["memory", "confirm", "note"]) == 0
+    assert "operator-confirmed" in capsys.readouterr().out
+    assert store.get("note") is not None
+
+
+
+def test_ledger_topup_and_rest(env: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["init"]) == 0
+    capsys.readouterr()
+    assert cli.main(["ledger", "topup", "500"]) == 0
+    assert "500" in capsys.readouterr().out
+    assert cli.main(["rest"]) == 0
+    assert "Deep Rest" in capsys.readouterr().out
+
+
+def test_vault_add_list_hides_secret(
+    env: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    monkeypatch.setenv("MITO_VAULT_KEY_FILE", str(env.parent / "vault.key"))
+    assert cli.main(["init"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(sys, "stdin", io.StringIO("super-secret-value\n"))
+    assert cli.main(["vault", "add", "github-readonly"]) == 0
+    out = capsys.readouterr().out
+    assert "cred:github-readonly" in out and "super-secret-value" not in out
+    assert cli.main(["--json", "vault", "list"]) == 0
+    listed = capsys.readouterr().out
+    assert "cred:github-readonly" in listed and "super-secret-value" not in listed

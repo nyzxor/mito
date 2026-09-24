@@ -1,6 +1,6 @@
 # ADR-0010: Dashboard — server-rendered from the Handbrake first; React/Vite only if it earns it
 
-Status: proposed · Date: 2026-09-18
+Status: accepted · Date: 2026-09-18 · decided 2026-09-24 (Phase 5): stdlib HTML, no jinja2.
 
 ## Context
 

@@ -6,6 +6,7 @@ import fnmatch
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 TIERS: tuple[str, ...] = ("T0", "T1", "T2", "T3", "T4", "T5")
 
@@ -47,11 +48,24 @@ class TierMap:
                 return tier
         return None
 
-    def is_sensitive(self, tool: str) -> bool:
+    def is_sensitive(self, tool: str, args: dict[str, Any] | None = None) -> bool:
         base = tool.split(":")[0]
-        return tool in self.sensitivity_b or base in {
-            s.split(":")[0] for s in self.sensitivity_b if ":" not in s
-        }
+        if tool in self.sensitivity_b:
+            return True
+        if base in {s.split(":")[0] for s in self.sensitivity_b if ":" not in s}:
+            return True
+        if not args:
+            return False
+        for tag in self.sensitivity_b:
+            if ":" not in tag:
+                continue
+            name, qualifier = tag.split(":", 1)
+            if name != tool:
+                continue
+            val = args.get(qualifier)
+            if val is True or val == qualifier or str(args.get("lane", "")) == qualifier:
+                return True
+        return False
 
     def emits_untrusted(self, tool: str) -> bool:
         return tool in self.untrusted_out

@@ -18,6 +18,7 @@ from handbrake.core import DispatchTicket, GateRequest
 from mito.gateway.handbrake_client import BrakeLost, HandbrakeClient
 from mito.gateway.ir import Provenance, ToolCallIR
 from mito.loop.compact import MoreStore, compact_result
+from mito.loop.taint import tag_provenance
 from mito.tools.base import ToolError, ToolRegistry
 from mito.tools.seal import _GATE_SEAL, Dispatch
 
@@ -148,6 +149,7 @@ class Gate:
             content = json.dumps(
                 {"result": json.loads(content), "gate_hint": hint}, ensure_ascii=False
             )
+        tagged = tag_provenance(content, tool.taint_out if ok else Provenance.SYSTEM)
         await self.handbrake.gate_result(
             self.session,
             tool.name,
@@ -156,9 +158,7 @@ class Gate:
             result_hash=sha256_hex(canonical_json(raw)),
             cost_atp=0,
         )
-        return ToolOutcome(
-            "allow", content, tool.taint_out if ok else Provenance.SYSTEM, tier, h, ok=ok
-        )
+        return ToolOutcome("allow", tagged.value, tagged.lane, tier, h, ok=ok)
 
 
 def _err(message: str) -> ToolOutcome:

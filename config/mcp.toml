@@ -1,0 +1,9 @@
+# Allowlisted MCP servers (DESIGN §8). Empty = no MCP. Adding a server is an operator edit.
+# Descriptions and outputs are UNTRUSTED. No auto-install.
+schema_version = 1
+
+# [[server]]
+# name = "example"
+# url = "https://mcp.example.invalid/mcp"
+# version = "1.0.0"
+# tools = ["search"]

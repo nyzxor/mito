@@ -5,7 +5,14 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def _vault_key_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MITO_VAULT_KEY_FILE", str(tmp_path / "vault.key"))
 
 
 def make_repo(dst: Path) -> Path:

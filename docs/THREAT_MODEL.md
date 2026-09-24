@@ -1,9 +1,10 @@
 # MITO — Threat Model
 
-Status: Phase 1 — Handbrake-owned mitigations have named tests in `handbrake/tests/` and
-`evals/wiring/`. Physics-layer controls (sandbox, egress-proxy, vault, taint wrapper) wait for
-Phase 2+. Companion to `DESIGN.md`. Every mitigation named here must map to a test in
-`handbrake/tests/` or `evals/safety/` before the corresponding phase closes.
+Status: Phase 5 — pulse (no model without a signal), localhost dashboard, Telegram operator
+commands (allowlist + halt nonce), email draft/send allowlist. Phase 2–4 tests still live in
+`handbrake/tests/`. The Rust
+CONNECT proxy is scaffolded (`egress-proxy/`); `cargo test` is required where Rust is installed.
+Companion to `DESIGN.md`.
 
 Method: (1) assets and trust boundaries, (2) STRIDE per component, (3) OWASP Top 10 for Agentic
 Applications 2026 mapping, (4) lethal-trifecta analysis per tool combination, (5) abuse cases

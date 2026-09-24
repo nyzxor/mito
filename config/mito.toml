@@ -34,3 +34,7 @@ github = []
 
 [channels]
 operator_ids = { discord = [], telegram = [] }
+
+[channels.email]
+approved_recipients = []          # email.send refuses anyone else
+mailbox_handle = "cred:mailbox"   # absent vault handle → email.read fails closed

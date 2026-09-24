@@ -1,7 +1,6 @@
 """MITO operator CLI (ADR-0013). Plain argparse, `--json` on every command.
 
-Phase 1 implements: init, up, run, status, halt, wake, approve, deny, checkin, audit verify|tail,
-policy sign, autonomy set, dev clean. Later phases: rest, ledger, evolve, skills, vault.
+Phase 5 implements: pulse, dashboard, Telegram operator commands, email draft/send. Later: evolve.
 """
 
 from __future__ import annotations
@@ -19,14 +18,10 @@ from handbrake.paths import MitoPaths, detect_dev_mode, repo_root
 
 from mito import __version__
 
-PHASE = 1
+PHASE = 5
 
 NOT_YET: dict[str, str] = {
-    "rest": "Phase 3 (metabolism)",
-    "ledger": "Phase 3 (metabolism)",
     "evolve": "Phase 6 (evolution)",
-    "skills": "Phase 4 (skills)",
-    "vault": "Phase 2 (vault/broker)",
 }
 
 
@@ -120,8 +115,17 @@ def cmd_status(ns: argparse.Namespace) -> int:
             f"month: ${st['spend_usd']['month_cloud']:.2f}  "
             f"all today: ${st['spend_usd']['day_all']:.4f}"
         ),
+        (
+            f"ATP: {st.get('atp', {}).get('balance', 0):.0f}  "
+            f"runway: {st.get('atp', {}).get('runway_days') or '∞'}d  "
+            f"verified income: {st.get('atp', {}).get('verified_income', 0):.0f}"
+        ),
         f"pending approvals: {st['pending_approvals']}   audit seq: {st['audit']['seq']}",
         f"integrity: {st['integrity']['reason'] if st['integrity'] else 'not checked yet'}",
+        (
+            f"docker: {st.get('docker', '?')}  egress_proxy: {st.get('egress_proxy', '?')}  "
+            f"vault handles: {st.get('vault_handles', 0)}"
+        ),
     ]
     _out(ns, st, "\n".join(lines))
     return 0
@@ -275,6 +279,88 @@ def cmd_autonomy(ns: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rest(ns: argparse.Namespace) -> int:
+    from mito.cli.operator import connect
+
+    st = connect(_paths()).rest()
+    _out(ns, st, "Deep Rest: pulse off, no model calls. `mito wake` to resume.")
+    return 0
+
+
+def cmd_ledger(ns: argparse.Namespace) -> int:
+    from mito.cli.operator import connect, sign_command
+
+    if not ns.args:
+        snap = connect(_paths()).ledger_snapshot()
+        _out(ns, snap)
+        return 0
+    verb = ns.args[0]
+    op = connect(_paths())
+    if verb == "confirm":
+        if len(ns.args) < 2:
+            print("usage: mito ledger confirm <id>", file=sys.stderr)
+            return 2
+        signed = sign_command(_paths(), "ledger.confirm", {"id": ns.args[1]})
+        out = op.ledger_confirm(signed)
+        _out(ns, out, f"verified claim {out.get('id')} (+{out.get('amount_atp')} ATP)")
+        return 0
+    if verb == "topup":
+        if len(ns.args) < 2:
+            print("usage: mito ledger topup <atp>", file=sys.stderr)
+            return 2
+        out = op.ledger_topup(float(ns.args[1]))
+        _out(ns, out, f"top-up ok; balance {out.get('balance_atp')} ATP ({out.get('state')})")
+        return 0
+    if verb == "claims":
+        snap = op.ledger_snapshot()
+        _out(ns, snap.get("pending_claims", []), None)
+        return 0
+    print("usage: mito ledger [confirm <id>|topup <atp>|claims]", file=sys.stderr)
+    return 2
+
+
+def cmd_vault(ns: argparse.Namespace) -> int:
+    from mito.cli.operator import connect
+
+    if not ns.args:
+        print("usage: mito vault add <handle> | list | revoke <handle>", file=sys.stderr)
+        return 2
+    op = connect(_paths())
+    verb = ns.args[0]
+    if verb == "list":
+        handles = op.vault_list()
+        _out(
+            ns,
+            handles,
+            "\n".join(
+                f"{h['handle']}  {'REVOKED' if h['revoked'] else 'live'}  {h.get('note') or '-'}"
+                for h in handles
+            )
+            or "vault empty",
+        )
+        return 0
+    if verb == "add":
+        if len(ns.args) < 2:
+            print("usage: mito vault add <handle>   (secret on stdin)", file=sys.stderr)
+            return 2
+        secret = sys.stdin.readline().rstrip("\n")
+        if not secret:
+            print("error: empty secret on stdin", file=sys.stderr)
+            return 2
+        name = op.vault_add(ns.args[1], secret)
+        _out(ns, {"handle": name}, f"stored {name} (secret never printed)")
+        return 0
+    if verb == "revoke":
+        if len(ns.args) < 2:
+            print("usage: mito vault revoke <handle>", file=sys.stderr)
+            return 2
+        ok = op.vault_revoke(ns.args[1])
+        _out(ns, {"revoked": ok}, f"revoked {ns.args[1]}" if ok else "handle not found")
+        return 0 if ok else 1
+    print("usage: mito vault add <handle> | list | revoke <handle>", file=sys.stderr)
+    return 2
+
+
 def cmd_dev(ns: argparse.Namespace) -> int:
     task = ns.args[0] if ns.args else ""
     if task == "clean":
@@ -284,14 +370,94 @@ def cmd_dev(ns: argparse.Namespace) -> int:
             shutil.rmtree(p, ignore_errors=True)
         print("cleaned caches")
         return 0
-    if task in ("sandbox-build", "evals-record"):
-        print(
-            f"mito dev {task}: arrives in {'Phase 2' if task == 'sandbox-build' else 'Phase 3'}",
-            file=sys.stderr,
-        )
+    if task == "sandbox-build":
+        from handbrake.sandbox.runner import SandboxUnavailable, build_image
+
+        try:
+            return build_image(repo_root())
+        except SandboxUnavailable as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+    if task == "evals-record":
+        print("mito dev evals-record: arrives in Phase 3", file=sys.stderr)
         return 2
     print("usage: mito dev clean|sandbox-build|evals-record", file=sys.stderr)
     return 2
+
+
+def cmd_skills(ns: argparse.Namespace) -> int:
+    from mito.skills_rt.frontmatter import SkillParseError
+    from mito.skills_rt.loader import SkillError, approve, list_quarantine
+    from mito.tools.catalog import ADVERTISED
+
+    workspace = repo_root() / "skills"
+    if not ns.args or ns.args[0] != "quarantine":
+        print("usage: mito skills quarantine list | approve <name>", file=sys.stderr)
+        return 2
+    verb = ns.args[1] if len(ns.args) > 1 else "list"
+    if verb == "list":
+        items = list_quarantine(workspace, available_tools=ADVERTISED)
+        _out(
+            ns,
+            items,
+            "\n".join(
+                (
+                    f"{i.get('name', Path(str(i.get('path', ''))).parent.name)}  "
+                    f"{'ok' if i.get('ok') else i.get('error')}"
+                )
+                for i in items
+            )
+            or "quarantine empty",
+        )
+        return 0
+    if verb == "approve":
+        if len(ns.args) < 3:
+            print("usage: mito skills quarantine approve <name>", file=sys.stderr)
+            return 2
+        try:
+            dest = approve(workspace, ns.args[2], available_tools=ADVERTISED)
+        except (SkillError, SkillParseError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        _out(ns, {"approved": str(dest)}, f"approved {ns.args[2]} -> {dest}")
+        return 0
+    print("usage: mito skills quarantine list | approve <name>", file=sys.stderr)
+    return 2
+
+
+def cmd_memory(ns: argparse.Namespace) -> int:
+    from mito.memory.store import MemoryError, MemoryStore
+
+    store = MemoryStore(_paths().runtime / "memory")
+    if not ns.args:
+        print("usage: mito memory confirm <name>", file=sys.stderr)
+        return 2
+    if ns.args[0] == "confirm":
+        if len(ns.args) < 2:
+            print("usage: mito memory confirm <name>", file=sys.stderr)
+            return 2
+        try:
+            fact = store.confirm(ns.args[1])
+        except MemoryError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        _out(
+            ns,
+            fact.to_dict(),
+            f"confirmed {fact.name} (lane={fact.trust_lane})",
+        )
+        return 0
+    print("usage: mito memory confirm <name>", file=sys.stderr)
+    return 2
+
+
+def cmd_dashboard(ns: argparse.Namespace) -> int:
+    from mito.cli.operator import connect, handbrake_url
+
+    ticket = connect(_paths()).dashboard_ticket()
+    url = f"{handbrake_url()}/dashboard?ticket={ticket}"
+    _out(ns, {"url": url}, f"open {url}  (localhost, one-time ticket)")
+    return 0
 
 
 def cmd_not_yet(ns: argparse.Namespace) -> int:
@@ -324,12 +490,14 @@ _COMMANDS: dict[str, tuple[str, Any]] = {
         cmd_policy,
     ),
     "autonomy": ("autonomy set <A0|A1|A2> — signed operator command", cmd_autonomy),
-    "rest": ("enter Deep Rest", cmd_not_yet),
-    "ledger": ("ledger confirm <id>", cmd_not_yet),
+    "rest": ("enter Deep Rest (no model calls until wake / threshold)", cmd_rest),
+    "ledger": ("ledger | confirm <id> | topup <atp> | claims", cmd_ledger),
     "evolve": ("evolve review", cmd_not_yet),
-    "skills": ("skills quarantine list|approve <name>", cmd_not_yet),
-    "vault": ("vault add <handle>", cmd_not_yet),
+    "skills": ("skills quarantine list|approve <name>", cmd_skills),
+    "memory": ("memory confirm <name> — lift a quarantined fact", cmd_memory),
+    "vault": ("vault add <handle> | list | revoke <handle>  (secret on stdin)", cmd_vault),
     "dev": ("developer tasks: clean | sandbox-build | evals-record", cmd_dev),
+    "dashboard": ("print a one-time localhost dashboard URL", cmd_dashboard),
 }
 
 

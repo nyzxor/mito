@@ -169,6 +169,7 @@ def make_harness(
     tiers_patch: str = "",
 ) -> Harness:
     os.environ.setdefault("MITO_OPERATOR_KEY_FILE", str(tmp_path / "opkey"))
+    os.environ.setdefault("MITO_VAULT_KEY_FILE", str(tmp_path / "vault.key"))
     repo = make_repo(tmp_path / "repo")
     if tiers_patch:
         p = repo / "policy" / "risk_tiers.toml"

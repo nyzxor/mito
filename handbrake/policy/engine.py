@@ -172,11 +172,15 @@ class PolicyEngine:
         )
 
     # ---- evaluation ------------------------------------------------------------------------
-    def flags_for(self, tool: str, tier: str) -> set[str]:
+    def flags_for(self, tool: str, tier: str, args: dict[str, Any] | None = None) -> set[str]:
         flags: set[str] = set()
         if self.tiers.emits_untrusted(tool):
             flags.add("A")
-        if self.tiers.is_sensitive(tool):
+        if self.tiers.is_sensitive(tool, args):
+            flags.add("B")
+        if args and (
+            args.get("credential_handle") or str(args.get("cred", "")).startswith("cred:")
+        ):
             flags.add("B")
         if tier_index(tier) >= tier_index("T3"):
             flags.add("C")
@@ -188,7 +192,7 @@ class PolicyEngine:
         tier = self.tiers.tier_of(tool)
         if tier is None:
             return Verdict("deny", f"unknown tool {tool!r}", "T5", tuple(sorted(ctx.taint_flags)))
-        after = tuple(sorted(set(ctx.taint_flags) | self.flags_for(tool, tier)))
+        after = tuple(sorted(set(ctx.taint_flags) | self.flags_for(tool, tier, args)))
 
         if tier == "T5" or self._blacklisted(tool):
             return Verdict("deny", f"{tool} is on the hard blacklist (T5)", tier, after)

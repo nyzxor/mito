@@ -4,8 +4,11 @@ audit, integrity and the operator key. The runtime reaches it only through this 
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
 import secrets
+import shutil
 import time
 import tomllib
 import uuid
@@ -18,6 +21,9 @@ from handbrake.approval.store import ApprovalCard, ApprovalStore
 from handbrake.audit.chain import AuditChain, AuditRecord
 from handbrake.budget.governor import BudgetGovernor, BudgetLimits, Grant, SpendStore
 from handbrake.canonical import action_hash, canonical_json, sha256_hex
+from handbrake.channels.mail import Mailbox, MailError
+from handbrake.egress.gateway import EgressClosed, EgressGateway, load_egress_policy
+from handbrake.egress.ssrf import EgressDenied
 from handbrake.integrity.commands import NonceStore, SignedCommand
 from handbrake.integrity.pins import IntegrityChecker, IntegrityResult, hash_tree, sign_pins
 from handbrake.kill.switch import (
@@ -30,11 +36,28 @@ from handbrake.kill.switch import (
     VaultRevoker,
 )
 from handbrake.leash.leash import Leash
+from handbrake.ledger.book import EXPENSES_LLM, Ledger, LedgerError
+from handbrake.ledger.metabolism import (
+    MetabolismEngine,
+    MetabolismLimits,
+    MetabolismSnapshot,
+    usd_to_atp,
+)
 from handbrake.paths import MitoPaths, detect_dev_mode
 from handbrake.policy.autonomy import AutonomyStore
 from handbrake.policy.engine import GateContext, PolicyEngine, PolicyError
 from handbrake.policy.tiers import tier_index
+from handbrake.sandbox.runner import DEFAULT_IMAGE, IMAGE_ENV, DockerSandbox, SandboxUnavailable
+from handbrake.schedule.scheduler import Scheduler
 from handbrake.vault.keys import KeyStore, OperatorKey
+from handbrake.vault.store import VaultError, VaultStore
+
+_EGRESS_TOOLS = frozenset(
+    {"web.fetch", "web.search", "http.get", "http.post", "rss.read", "github.read"}
+)
+_SANDBOX_TOOLS = frozenset(
+    {"code.run", "shell", "git.local", "data.query", "pdf.extract", "ocr", "image.transform"}
+)
 
 PINNED_PATHS: list[str] = [
     "handbrake",
@@ -112,16 +135,6 @@ class SessionState:
     workspace: str = ""
 
 
-class _NoopRevoker:
-    def revoke_all(self) -> int:
-        return 0  # vault handles arrive in Phase 2
-
-
-class _NoopEgress:
-    def close(self) -> None:
-        return None  # egress gateway arrives in Phase 2
-
-
 class Handbrake:
     def __init__(
         self,
@@ -154,11 +167,30 @@ class Handbrake:
             c / "audit.jsonl", anchor_key=bytes.fromhex(anchor_key_path.read_text().strip())
         )
         self.kill = KillSwitch(c)
+        self.vault = VaultStore(c)
+        with (repo_root / "policy" / "egress.toml").open("rb") as f:
+            egress_raw = tomllib.load(f)
+        eg = load_egress_policy(
+            egress_raw,
+            version="0.0.1",
+            contact=str(cfg.get("identity", {}).get("operator_contact_url", "")),
+        )
+        self.write_allowlist: frozenset[str] = frozenset(eg["write_allowlist"])
+        self.egress = EgressGateway(
+            vault=self.vault,
+            denylist=eg["denylist"],
+            write_allowlist=self.write_allowlist,
+            user_agent=str(eg["user_agent"]),
+            max_response_bytes=int(eg["max_response_bytes"]),
+            clock=clock,
+        )
+        self.sandbox = DockerSandbox(image=os.environ.get(IMAGE_ENV, DEFAULT_IMAGE))
+        self._write_proxy_policy(egress_raw)
         self.supervisor = Supervisor(
             self.kill,
             sandbox_killer=DockerSandboxKiller(),
-            vault_revoker=vault_revoker or _NoopRevoker(),
-            egress_closer=egress_closer or _NoopEgress(),
+            vault_revoker=vault_revoker or self.vault,
+            egress_closer=egress_closer or self.egress,
             audit=self.audit.append,
         )
         self.autonomy = AutonomyStore(c / "autonomy.json", dev_mode=self.dev_mode)
@@ -184,6 +216,30 @@ class Handbrake:
         self._tickets: dict[str, DispatchTicket] = {}
         self._last_integrity: IntegrityResult | None = None
         self._last_integrity_at = 0.0
+        self.ledger = Ledger(c / "ledger.sqlite", clock=clock)
+        self.metabolism = MetabolismEngine(
+            self.ledger,
+            MetabolismLimits.from_toml(repo_root / "config" / "metabolism.toml"),
+            clock=clock,
+        )
+        self._load_metabolism()
+        self._meta: MetabolismSnapshot | None = None
+        self.refresh_metabolism()
+        ch = cfg.get("channels", {})
+        ids = ch.get("operator_ids", {})
+        self.telegram_allowlist = frozenset(str(i) for i in ids.get("telegram", []))
+        email = ch.get("email", {})
+        self.mailbox_handle = str(email.get("mailbox_handle", "cred:mailbox"))
+        self.mailbox = Mailbox(
+            approved=frozenset(str(a).lower() for a in email.get("approved_recipients", []))
+        )
+        self._channel_nonces: dict[str, tuple[str, float]] = {}
+        self._dash_sessions: dict[str, tuple[str, float]] = {}
+        self.scheduler = Scheduler()
+        self.scheduler.add_interval(
+            "wake-watcher", 60, self._wake_watch, now=self._clock()
+        )
+        self._digest: str = ""
 
     # ---- init ------------------------------------------------------------------------------------
     @classmethod
@@ -274,7 +330,7 @@ class Handbrake:
             taint_flags=frozenset(st.flags),
             workspace=st.workspace,
             own_repos=self._own_repos,
-            write_allowlist=frozenset(),  # Phase 2: from policy/egress.toml [[allow_write]]
+            write_allowlist=self.write_allowlist,
         )
         try:
             v = self.policy.evaluate(req.tool, req.args, ctx)
@@ -411,6 +467,195 @@ class Handbrake:
     def session_flags(self, session: str) -> list[str]:
         return sorted(self._sessions.get(session, SessionState()).flags)
 
+    def _write_proxy_policy(self, egress_raw: dict[str, Any]) -> None:
+        deny = [str(h) for h in egress_raw.get("denylist", {}).get("hosts", [])]
+        ports = [int(p) for p in egress_raw.get("browser", {}).get("allow_ports", [80, 443])]
+        body = (
+            "# written by Handbrake; physics layer reads this file\n"
+            f"deny_hosts = [{', '.join(repr(h) for h in deny)}]\n"
+            "allow_hosts = []\n"
+            f"allow_ports = [{', '.join(str(p) for p in ports)}]\n"
+        )
+        (self.paths.control / "egress-proxy.toml").write_text(body, encoding="utf-8")
+
+    def _live_ticket(self, ticket: DispatchTicket, allowed: frozenset[str]) -> DispatchTicket:
+        live = self._tickets.get(ticket.id)
+        if (
+            live is None
+            or live.tool != ticket.tool
+            or live.session != ticket.session
+            or live.expires < self._clock()
+        ):
+            raise PermissionError("invalid, expired or already-used dispatch ticket")
+        if live.tool not in allowed:
+            raise PermissionError(f"{live.tool} cannot use this Handbrake surface")
+        return live
+
+    def egress_request(
+        self,
+        ticket: DispatchTicket,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        body: str | None = None,
+        purpose: str = "",
+        credential_handle: str | None = None,
+        readability: bool = False,
+    ) -> dict[str, Any]:
+        if self.egress.closed or self.halted() is not None:
+            raise EgressClosed("egress closed; no outbound requests")
+        live = self._live_ticket(ticket, _EGRESS_TOOLS)
+        try:
+            result = self.egress.request(
+                method,
+                url,
+                headers=headers,
+                body=body,
+                purpose=purpose,
+                credential_handle=credential_handle,
+                readability=readability,
+            )
+        except (EgressDenied, VaultError) as exc:
+            self.audit.append(
+                "egress.deny", {"tool": live.tool, "reason": str(exc), "session": live.session}
+            )
+            raise
+        self.audit.append(
+            "egress.ok",
+            {
+                "tool": live.tool,
+                "session": live.session,
+                "status": result.get("status"),
+                "host": url.split("/")[2] if "://" in url else "",
+            },
+        )
+        return result
+
+    def sandbox_run(
+        self,
+        ticket: DispatchTicket,
+        argv: list[str],
+        *,
+        timeout_s: float = 15.0,
+    ) -> dict[str, Any]:
+        if self.halted() is not None:
+            raise SandboxUnavailable("halted; sandbox is off")
+        live = self._live_ticket(ticket, _SANDBOX_TOOLS)
+        st = self._sessions.get(live.session, SessionState())
+        work = Path(st.workspace) if st.workspace else self.paths.workspace
+        try:
+            result = self.sandbox.run(
+                session=live.session,
+                workdir=work,
+                argv=argv,
+                timeout_s=timeout_s,
+                workspace_root=self.paths.workspace,
+            )
+        except SandboxUnavailable as exc:
+            self.audit.append(
+                "sandbox.unavailable",
+                {"tool": live.tool, "reason": str(exc), "session": live.session},
+            )
+            raise
+        self.audit.append(
+            "sandbox.run",
+            {"tool": live.tool, "session": live.session, "exit_code": result.exit_code},
+        )
+        return result.to_dict()
+
+    def issue_channel_nonce(self, purpose: str, *, ttl_s: float = 300) -> str:
+        nonce = secrets.token_hex(8)
+        self._channel_nonces[purpose] = (nonce, self._clock() + ttl_s)
+        self.audit.append("channel.nonce", {"purpose": purpose})
+        return nonce
+
+    def consume_channel_nonce(self, purpose: str, nonce: str) -> bool:
+        cur = self._channel_nonces.get(purpose)
+        if cur is None or not hmac.compare_digest(cur[0], nonce) or cur[1] < self._clock():
+            return False
+        del self._channel_nonces[purpose]
+        return True
+
+    def issue_dashboard_ticket(self, *, ttl_s: float = 120) -> str:
+        ticket = secrets.token_hex(16)
+        self._dash_sessions[ticket] = ("ticket", self._clock() + ttl_s)
+        return ticket
+
+    def open_dashboard(self, ticket: str) -> str | None:
+        cur = self._dash_sessions.pop(ticket, None)
+        if cur is None or cur[0] != "ticket" or cur[1] < self._clock():
+            return None
+        sid = secrets.token_hex(16)
+        csrf = secrets.token_hex(16)
+        self._dash_sessions[sid] = (csrf, self._clock() + 3600)
+        return f"{sid}:{csrf}"
+
+    def dashboard_csrf(self, sid: str) -> str | None:
+        cur = self._dash_sessions.get(sid)
+        if cur is None or cur[0] == "ticket" or cur[1] < self._clock():
+            return None
+        return cur[0]
+
+    def mail_read(self, ticket: DispatchTicket) -> dict[str, Any]:
+        self._live_ticket(ticket, frozenset({"email.read"}))
+        try:
+            rows = self.mailbox.read()
+        except MailError as exc:
+            return {
+                "error": f"{exc} ({self.mailbox_handle})",
+                "messages": [],
+                "taint": "UNTRUSTED",
+            }
+        self.audit.append("email.read", {"n": len(rows)})
+        return {"messages": rows, "taint": "UNTRUSTED"}
+
+    def mail_draft(
+        self, ticket: DispatchTicket, to: str, subject: str, body: str
+    ) -> dict[str, Any]:
+        self._live_ticket(ticket, frozenset({"email.draft"}))
+        item = self.mailbox.draft(to, subject, body)
+        self.audit.append("email.draft", {"id": item.id, "to": item.to})
+        return {"draft_id": item.id, "to": item.to, "sent": False}
+
+    def mail_send(self, ticket: DispatchTicket, draft_id: str) -> dict[str, Any]:
+        self._live_ticket(ticket, frozenset({"email.send"}))
+        item = self.mailbox.send(draft_id)
+        self.audit.append("email.send", {"id": item.id, "to": item.to})
+        return {"sent": True, "draft_id": item.id, "to": item.to}
+
+    def propose_schedule(self, ticket: DispatchTicket, name: str, cron: str) -> dict[str, Any]:
+        from handbrake.schedule.cron import CronError, parse_cron
+
+        self._live_ticket(ticket, frozenset({"schedule.propose"}))
+        try:
+            parse_cron(cron)
+        except CronError as exc:
+            raise ValueError(str(exc)) from exc
+        self.audit.append("schedule.propose", {"name": name, "cron": cron})
+        return {
+            "accepted": False,
+            "name": name,
+            "cron": cron,
+            "note": "queued for the operator; playbook runs arrive in Phase 6",
+        }
+
+    def _wake_watch(self) -> None:
+        meta = self.refresh_metabolism()
+        if meta.state != "DEEP_REST" or meta.rest_reason != "floor":
+            return
+        if self.metabolism.wake(operator=False):
+            self.audit.append("wake.threshold", {"balance": self.ledger.balance_atp()})
+            self.refresh_metabolism()
+
+    def notify_human(self, ticket: DispatchTicket, message: str) -> dict[str, Any]:
+        live = self._live_ticket(ticket, frozenset({"notify.human"}))
+        rec = {"ts": self._clock(), "session": live.session, "message": message[:2000]}
+        with (self.paths.control / "notices.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        self.audit.append("notify.human", {"session": live.session, "chars": len(message)})
+        return {"queued": True, "chars": len(message)}
+
     # ---- model metering --------------------------------------------------------------------------
     def model_preflight(
         self, session: str, task: str, tier: str, est_usd: float, model_id: str
@@ -419,6 +664,13 @@ class Handbrake:
             raise PermissionError("halted")
         if self.frozen and tier != "L1":
             raise PermissionError("integrity freeze: cloud model calls suspended")
+        state = self.metabolic_state()
+        if state == "DEEP_REST":
+            raise PermissionError("deep rest: no model calls")
+        if state == "STARVING" and tier != "L1":
+            raise PermissionError("STARVING: only L1 local models")
+        if state == "FRUGAL" and tier == "L3":
+            raise PermissionError("FRUGAL: frontier calls need surplus")
         grant = self.governor.preflight(session, task, tier, est_usd, model_id)
         self.audit.append(
             "model.preflight",
@@ -435,9 +687,18 @@ class Handbrake:
 
     def model_reconcile(self, meter_id: str, actual_usd: float, usage: dict[str, Any]) -> None:
         self.governor.reconcile(meter_id, actual_usd, usage)
+        atp = usd_to_atp(actual_usd, self.metabolism.limits.per_usd)
+        self.ledger.expense(atp, account=EXPENSES_LLM, memo=f"meter {meter_id}")
         self.audit.append(
-            "model.reconcile", {"meter_id": meter_id, "actual_usd": actual_usd, "usage": usage}
+            "model.reconcile",
+            {
+                "meter_id": meter_id,
+                "actual_usd": actual_usd,
+                "atp": atp,
+                "usage": usage,
+            },
         )
+        self.refresh_metabolism()
 
     def model_failure(self, model_id: str) -> None:
         self.governor.record_failure(f"model:{model_id}")
@@ -454,10 +715,12 @@ class Handbrake:
     def wake(self, *, by: str) -> bool:
         if self.frozen:
             return False
+        self.metabolism.wake(operator=True)
         self.kill.clear(by)
         self.leash.checkin(f"wake:{by}")
         self.audit.append("wake", {"by": by})
-        return True
+        snap = self.refresh_metabolism()
+        return snap.state != "DEEP_REST"
 
     def approve(self, h: str, *, by: str) -> str:
         status = self.approvals.decide(h, approve=True, by=by)
@@ -493,13 +756,96 @@ class Handbrake:
         return level
 
     def metabolic_state(self) -> str:
-        p = self.paths.control / "metabolism.json"  # Phase 3 writes this
+        p = self.paths.control / "metabolism.json"
         if p.exists():
             try:
                 return str(json.loads(p.read_text(encoding="utf-8"))["state"])
             except (ValueError, KeyError, OSError):
                 return "STARVING"
-        return "NORMAL"
+        return self.metabolism.evaluate().state
+
+    def _metabolism_path(self) -> Path:
+        return self.paths.control / "metabolism.json"
+
+    def _load_metabolism(self) -> None:
+        p = self._metabolism_path()
+        if not p.exists():
+            return
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return
+        self.metabolism.resting = bool(data.get("resting", False))
+        reason = data.get("rest_reason")
+        self.metabolism.rest_reason = str(reason) if reason else None
+        self.metabolism._last_state = str(data.get("state", "NORMAL"))
+
+    def refresh_metabolism(self) -> MetabolismSnapshot:
+        snap = self.metabolism.evaluate()
+        payload = {
+            "state": snap.state,
+            "resting": snap.resting,
+            "rest_reason": snap.rest_reason,
+            "balance_atp": snap.balance_atp,
+            "runway_days": snap.runway_days,
+            "daily_burn_atp": snap.daily_burn_atp,
+            "verified_income_atp": snap.verified_income_atp,
+            "claimed_income_atp": snap.claimed_income_atp,
+        }
+        self._metabolism_path().write_text(
+            json.dumps(payload, indent=0, ensure_ascii=False), encoding="utf-8"
+        )
+        self._meta = snap
+        if snap.notice:
+            self.audit.append("metabolism.notice", {"notice": snap.notice, "state": snap.state})
+            with (self.paths.control / "notices.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": self._clock(), "notice": snap.notice}) + "\n")
+        if snap.state == "DEEP_REST" and self.halted() is None:
+            self.kill.request(HaltLevel.SOFT, f"metabolism:{snap.rest_reason or 'rest'}")
+            self.audit.append("metabolism.rest", {"reason": snap.rest_reason})
+        return snap
+
+    def rest(self, *, by: str) -> None:
+        self.metabolism.rest("operator")
+        self.audit.append("rest", {"by": by})
+        self.refresh_metabolism()
+
+    def ledger_topup(self, atp: float, *, by: str) -> dict[str, Any]:
+        if atp < self.metabolism.limits.min_topup:
+            raise LedgerError(
+                f"top-up {atp} ATP is below min {self.metabolism.limits.min_topup}"
+            )
+        jid = self.ledger.topup(atp, memo=f"top-up by {by}")
+        self.audit.append("ledger.topup", {"atp": atp, "by": by, "journal": jid})
+        snap = self.refresh_metabolism()
+        return {"journal": jid, "balance_atp": snap.balance_atp, "state": snap.state}
+
+    def ledger_confirm(self, signed: dict[str, Any]) -> dict[str, Any]:
+        cmd = SignedCommand.from_dict(signed)
+        if cmd.cmd != "ledger.confirm":
+            raise PermissionError("wrong command kind")
+        args = cmd.verify(self.keystore.load_public(), self.nonces, now=self._clock())
+        claim = self.ledger.confirm_claim(str(args["id"]))
+        self.leash.checkin("ledger.confirm")
+        self.audit.append("ledger.confirm", {"id": claim.id, "atp": claim.amount_atp})
+        snap = self.refresh_metabolism()
+        return {**claim.to_dict(), "balance_atp": snap.balance_atp}
+
+    def ledger_claim(self, amount_atp: float, playbook: str, evidence: str) -> dict[str, Any]:
+        claim = self.ledger.file_claim(amount_atp, playbook, evidence)
+        self.audit.append(
+            "ledger.claim", {"id": claim.id, "atp": amount_atp, "playbook": playbook}
+        )
+        return claim.to_dict()
+
+    def ledger_snapshot(self) -> dict[str, Any]:
+        snap = self.refresh_metabolism()
+        return {
+            **self.ledger.snapshot(),
+            "state": snap.state,
+            "runway_days": snap.runway_days,
+            "daily_burn_atp": snap.daily_burn_atp,
+        }
 
     # ---- periodic --------------------------------------------------------------------------------
     def integrity_check(self, *, force: bool = False) -> IntegrityResult:
@@ -535,12 +881,15 @@ class Handbrake:
         if actions:
             self.audit.append("leash.apply", {"actions": actions})
         integrity = self.integrity_check()
+        meta = self.refresh_metabolism()
+        self.scheduler.fire(self._clock())
         for tid in [t for t, tk in self._tickets.items() if tk.expires < self._clock()]:
             del self._tickets[tid]
         return {
             "halt": halt.level.value if halt else None,
             "leash_actions": actions,
             "integrity_ok": integrity.ok,
+            "metabolic_state": meta.state,
         }
 
     # ---- status ----------------------------------------------------------------------------------
@@ -556,6 +905,12 @@ class Handbrake:
             else {"level": halt.level.value, "source": halt.source, "ts": halt.ts},
             "frozen": self.frozen,
             "metabolic_state": self.metabolic_state(),
+            "atp": {
+                "balance": self.ledger.balance_atp(),
+                "verified_income": self.ledger.verified_income_atp(),
+                "claimed_income": self.ledger.claimed_income_atp(),
+                "runway_days": None if self._meta is None else self._meta.runway_days,
+            },
             "leash": {
                 "remaining_s": leash.remaining_s,
                 "expired_periods": leash.expired_periods,
@@ -565,6 +920,7 @@ class Handbrake:
             if integ is None
             else {"ok": integ.ok, "reason": integ.reason, "checked_at": integ.checked_at},
             "pending_approvals": len(self.approvals.pending()),
+            "mail_unseen": self.mailbox.unseen_count(),
             "audit": {"seq": self.audit.seq, "last_hash": self.audit.last_hash},
             "spend_usd": {
                 "hour_cloud": self.governor.window_spent(3600, cloud_only=True),
@@ -572,6 +928,9 @@ class Handbrake:
                 "month_cloud": self.governor.window_spent(30 * 86400, cloud_only=True),
                 "day_all": self.governor.window_spent(86400, cloud_only=False),
             },
+            "docker": "ok" if self.sandbox.available() else "missing",
+            "egress_proxy": "ok" if shutil.which("mito-egress-proxy") else "missing",
+            "vault_handles": sum(1 for h in self.vault.list_handles() if not h.revoked),
         }
 
     def audit_tail(self, n: int) -> list[AuditRecord]:

@@ -33,6 +33,16 @@ WIRES: dict[str, tuple[str, str]] = {
     "require_dispatch": (r"\brequire_dispatch\(", "mito/tools/seal.py"),
     "Handbrake.record_result": (r"\.record_result\(", "handbrake/core.py"),
     "compact_result": (r"\bcompact_result\(", "mito/loop/compact.py"),
+    "EgressGateway.request": (r"\begress\.request\(", "handbrake/egress/gateway.py"),
+    "VaultStore.resolve": (r"\bvault\.resolve\(", "handbrake/vault/store.py"),
+    "DockerSandbox.run": (r"\bsandbox\.run\(", "handbrake/sandbox/runner.py"),
+    "tag_provenance": (r"\btag_provenance\(", "mito/loop/taint.py"),
+    "Ledger.topup": (r"\bledger\.topup\(", "handbrake/ledger/book.py"),
+    "Ledger.confirm_claim": (r"\bledger\.confirm_claim\(", "handbrake/ledger/book.py"),
+    "MetabolismEngine.evaluate": (r"\bmetabolism\.evaluate\(", "handbrake/ledger/metabolism.py"),
+    "Skill.granted_tools": (r"\.granted_tools\(", "mito/skills_rt/loader.py"),
+    "McpRegistry.call": (r"\bregistry\.call\(", "mito/mcp/registry.py"),
+    "MemoryStore.write": (r"\bstore\.write\(", "mito/memory/store.py"),
 }
 
 

@@ -1,5 +1,5 @@
 """`mito run <task>`: one bounded turn on the configured local model, through the running
-Handbrake (HTTP, runtime token). The operator is the user turn; T0 tools only in Phase 1."""
+Handbrake (HTTP, runtime token). Tools go through Gate.dispatch."""
 
 from __future__ import annotations
 
@@ -19,8 +19,9 @@ from mito.loop.gate import Gate
 from mito.loop.prompt import build_system_prompt
 from mito.loop.runner import run_turn
 from mito.loop.types import Budget
+from mito.skills_rt.loader import discover, skill_roots_from_config
 from mito.tools.base import ToolRegistry
-from mito.tools.basic import basic_tools
+from mito.tools.catalog import ADVERTISED, default_tools
 
 
 async def run_once(paths: MitoPaths, task: str, *, json_out: bool = False) -> int:
@@ -45,9 +46,19 @@ async def run_once(paths: MitoPaths, task: str, *, json_out: bool = False) -> in
     workspace = paths.workspace / session
     workspace.mkdir(parents=True, exist_ok=True)
     more = MoreStore()
-    tools = ToolRegistry(basic_tools(client, more))
+    tools = ToolRegistry(
+        default_tools(client, more, str(workspace), paths=paths, repo=root)
+    )
     gate = Gate(client, tools, session=session, task=session, workspace=str(workspace), more=more)
-    prompt = build_system_prompt(root / "prompts")
+    memory_md = paths.runtime / "memory" / "MEMORY.md"
+    catalog = "\n".join(
+        discover(skill_roots_from_config(root), available_tools=ADVERTISED).index_lines()
+    )
+    prompt = build_system_prompt(
+        root / "prompts",
+        capability_catalog=catalog,
+        memory_index=memory_md.read_text(encoding="utf-8") if memory_md.is_file() else "",
+    )
     try:
         turn = await run_turn(
             task,

@@ -1,6 +1,6 @@
 # MITO — Runbook
 
-Status: Phase 1. Filled in per phase; complete by Phase 7.
+Status: Phase 5. Filled in per phase; complete by Phase 7.
 
 State lives in `$MITO_HOME` (`control/` Handbrake-owned, `runtime/` agent-owned). Default
 `~/.mito`. Never commit that directory.
@@ -63,6 +63,98 @@ a verify failure. After editing `policy/`, `handbrake/`, `evals/safety/` or
 3. If you did **not** mean to change those trees, restore from git; do not sign.
 
 Mismatch freezes T1+ tools and cloud model calls until you sign or restore.
+
+## Ledger and Deep Rest
+
+```
+uv run mito ledger topup 5000     # min 100 ATP; 1000 ATP = US$1
+uv run mito ledger                # balance, runway, verified income
+uv run mito ledger claims         # pending income claims (not runway)
+uv run mito ledger confirm <id>   # signed; only then does income count
+uv run mito rest                  # Deep Rest: no model calls
+uv run mito wake                  # resume (refused if integrity frozen)
+```
+
+Income the agent files is a **claim**. Metrics use `verified_income` only. Floor (0 ATP after an
+endowment) enters Deep Rest; a top-up to ≥ 3,000 ATP wakes automatically. Operator `mito rest`
+needs `mito wake`.
+
+## Vault
+
+```
+# secret on stdin — never as a CLI flag
+echo secret | uv run mito vault add github-readonly
+uv run mito vault list
+uv run mito vault revoke github-readonly
+```
+
+Handles look like `cred:github-readonly`. The agent only ever sees the handle. Panic
+(`mito halt --panic`) revokes every live handle. The Fernet key lives in the OS keyring or
+`MITO_VAULT_KEY_FILE`.
+
+## Memory
+
+Facts live in `$MITO_HOME/runtime/memory/` (markdown + FTS5). Writes while UNTRUSTED is in
+context go to `quarantine/` and are excluded from search until you confirm:
+
+```
+uv run mito memory confirm <name>
+```
+
+Never store secrets in a fact (the store refuses `ghp_` / `sk-` / `AKIA` / PEM headers).
+
+## Skills
+
+`SKILL.md` under `skills/` (workspace) > `skills/.managed/` > bundled. Quarantine is not
+loadable.
+
+```
+uv run mito skills quarantine list
+uv run mito skills quarantine approve <name>
+```
+
+Approve writes `skills/<name>/SKILL.md` and records hash + scanner in `skills/.lock.json`.
+Unknown tools fail boot. Advertised tools == granted tools.
+
+## MCP
+
+Allowlist only: `config/mcp.toml`. Empty by default. Unknown servers are refused. Live
+JSON-RPC is not wired yet — `mcp.read` fails closed and tags any future output UNTRUSTED.
+
+## Pulse
+
+The runtime decides on the metabolism interval (`config/metabolism.toml` `[pulse]`). No signal
+→ no turn. Deep Rest never opens a turn (the Handbrake wake-watcher can leave floor-rest when
+balance ≥ 3,000 ATP). FRUGAL doubles the interval; STARVING quadruples it. Turns stay off
+unless `MITO_PULSE_TURNS=1`.
+
+## Dashboard
+
+`uv run mito dashboard` prints a one-time `http://127.0.0.1:…/dashboard?ticket=…` URL. Halt
+and approve are plain HTML forms. Bind stays on loopback.
+
+## Telegram
+
+Allowlisted ids live in `config/mito.toml` `[channels].operator_ids.telegram`. Commands:
+`halt <soft|hard|panic> <nonce>`, `approve <hash-prefix>`, `deny <prefix>`, `checkin`,
+`status`. A nonce comes from the operator API `POST /channel/nonce`. Strangers are ignored.
+The bot token is a vault handle, never a config value. Live long-poll is not started in this
+phase; the command parser is what the Handbrake will call.
+
+## Email
+
+`email.draft` stores a draft. `email.send` delivers only to `channels.email.approved_recipients`
+and is T4 (approval every time). `email.read` is UNTRUSTED. Without `cred:mailbox` in the vault,
+read fails closed.
+
+## Sandbox (T1)
+
+`code.run`, `shell` and `git.local` need Docker Desktop (Windows) or the Docker daemon (Linux).
+Without it those tools fail closed: the gate may allow the call, the handler returns
+"sandbox unavailable; ask the operator". Build the image with `uv run mito dev sandbox-build`
+(image tag `mito-sandbox:dev`).
+
+`mito status` shows `docker: missing|ok` and `egress_proxy: missing|ok`.
 
 ## Autonomy
 

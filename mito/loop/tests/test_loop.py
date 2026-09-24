@@ -260,3 +260,14 @@ def test_l0_prompt_is_cache_shaped_and_small() -> None:
     )
     assert approx_tokens(p) <= 3000
     assert build_system_prompt(REPO / "prompts") == p  # deterministic
+
+
+def test_catalog_and_memory_index_follow_stable_prefix() -> None:
+    p = build_system_prompt(
+        REPO / "prompts",
+        capability_catalog="recall: search stored facts",
+        memory_index="- [pref](facts/pref.md), language",
+    )
+    assert p.index("<response_contract>") < p.index("<capabilities>")
+    assert p.index("<capabilities>") < p.index("<memory_index>")
+    assert "recall:" in p and "pref" in p

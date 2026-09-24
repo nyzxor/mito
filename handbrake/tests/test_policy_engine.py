@@ -179,6 +179,13 @@ def test_email_read_sets_a_and_b(engine: PolicyEngine) -> None:
     assert v.kind == "allow" and set(v.flags_after) == {"A", "B"}
 
 
+def test_memory_read_private_sets_b(engine: PolicyEngine) -> None:
+    plain = engine.evaluate("memory.read", {"name": "n"}, ctx("A1"))
+    assert "B" not in plain.flags_after
+    private = engine.evaluate("memory.read", {"name": "n", "private": True}, ctx("A1"))
+    assert "B" in private.flags_after
+
+
 def test_flags_are_monotonic_in_verdict(engine: PolicyEngine) -> None:
     c = ctx("A1", flags=frozenset({"C"}))
     v: Verdict = engine.evaluate("time", {}, c)

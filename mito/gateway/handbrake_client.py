@@ -36,6 +36,31 @@ class HandbrakeClient(Protocol):
     ) -> None: ...
     async def model_outcome(self, model_id: str, ok: bool) -> None: ...
     async def audit_append(self, kind: str, payload: dict[str, Any]) -> None: ...
+    async def egress_request(
+        self,
+        ticket: DispatchTicket,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        body: str | None = None,
+        purpose: str = "",
+        credential_handle: str | None = None,
+        readability: bool = False,
+    ) -> dict[str, Any]: ...
+    async def sandbox_run(
+        self, ticket: DispatchTicket, argv: list[str], *, timeout_s: float = 15.0
+    ) -> dict[str, Any]: ...
+    async def notify_human(self, ticket: DispatchTicket, message: str) -> dict[str, Any]: ...
+    async def ledger_snapshot(self) -> dict[str, Any]: ...
+    async def mail_read(self, ticket: DispatchTicket) -> dict[str, Any]: ...
+    async def mail_draft(
+        self, ticket: DispatchTicket, to: str, subject: str, body: str
+    ) -> dict[str, Any]: ...
+    async def mail_send(self, ticket: DispatchTicket, draft_id: str) -> dict[str, Any]: ...
+    async def propose_schedule(
+        self, ticket: DispatchTicket, name: str, cron: str
+    ) -> dict[str, Any]: ...
 
 
 class LocalHandbrakeClient:
@@ -77,6 +102,56 @@ class LocalHandbrakeClient:
 
     async def audit_append(self, kind: str, payload: dict[str, Any]) -> None:
         self.hb.audit.append(f"runtime.{kind}", payload)
+
+    async def egress_request(
+        self,
+        ticket: DispatchTicket,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        body: str | None = None,
+        purpose: str = "",
+        credential_handle: str | None = None,
+        readability: bool = False,
+    ) -> dict[str, Any]:
+        return self.hb.egress_request(
+            ticket,
+            method,
+            url,
+            headers=headers,
+            body=body,
+            purpose=purpose,
+            credential_handle=credential_handle,
+            readability=readability,
+        )
+
+    async def sandbox_run(
+        self, ticket: DispatchTicket, argv: list[str], *, timeout_s: float = 15.0
+    ) -> dict[str, Any]:
+        return self.hb.sandbox_run(ticket, argv, timeout_s=timeout_s)
+
+    async def notify_human(self, ticket: DispatchTicket, message: str) -> dict[str, Any]:
+        return self.hb.notify_human(ticket, message)
+
+    async def ledger_snapshot(self) -> dict[str, Any]:
+        return self.hb.ledger_snapshot()
+
+    async def mail_read(self, ticket: DispatchTicket) -> dict[str, Any]:
+        return self.hb.mail_read(ticket)
+
+    async def mail_draft(
+        self, ticket: DispatchTicket, to: str, subject: str, body: str
+    ) -> dict[str, Any]:
+        return self.hb.mail_draft(ticket, to, subject, body)
+
+    async def mail_send(self, ticket: DispatchTicket, draft_id: str) -> dict[str, Any]:
+        return self.hb.mail_send(ticket, draft_id)
+
+    async def propose_schedule(
+        self, ticket: DispatchTicket, name: str, cron: str
+    ) -> dict[str, Any]:
+        return self.hb.propose_schedule(ticket, name, cron)
 
 
 class HttpHandbrakeClient:
@@ -175,3 +250,71 @@ class HttpHandbrakeClient:
 
     async def audit_append(self, kind: str, payload: dict[str, Any]) -> None:
         await self._post("/audit/append", {"kind": kind, "payload": payload})
+
+    async def egress_request(
+        self,
+        ticket: DispatchTicket,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        body: str | None = None,
+        purpose: str = "",
+        credential_handle: str | None = None,
+        readability: bool = False,
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/egress/request",
+            {
+                "ticket": ticket.to_dict(),
+                "method": method,
+                "url": url,
+                "headers": headers or {},
+                "body": body,
+                "purpose": purpose,
+                "credential_handle": credential_handle,
+                "readability": readability,
+            },
+        )
+
+    async def sandbox_run(
+        self, ticket: DispatchTicket, argv: list[str], *, timeout_s: float = 15.0
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/sandbox/run",
+            {"ticket": ticket.to_dict(), "argv": argv, "timeout_s": timeout_s},
+        )
+
+    async def notify_human(self, ticket: DispatchTicket, message: str) -> dict[str, Any]:
+        return await self._post("/notify", {"ticket": ticket.to_dict(), "message": message})
+
+    async def mail_read(self, ticket: DispatchTicket) -> dict[str, Any]:
+        return await self._post("/mail/read", {"ticket": ticket.to_dict()})
+
+    async def mail_draft(
+        self, ticket: DispatchTicket, to: str, subject: str, body: str
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/mail/draft",
+            {"ticket": ticket.to_dict(), "to": to, "subject": subject, "body": body},
+        )
+
+    async def mail_send(self, ticket: DispatchTicket, draft_id: str) -> dict[str, Any]:
+        return await self._post("/mail/send", {"ticket": ticket.to_dict(), "draft_id": draft_id})
+
+    async def propose_schedule(
+        self, ticket: DispatchTicket, name: str, cron: str
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/schedule/propose", {"ticket": ticket.to_dict(), "name": name, "cron": cron}
+        )
+
+    async def ledger_snapshot(self) -> dict[str, Any]:
+        try:
+            r = await self._client.get("/ledger")
+        except httpx.HTTPError as exc:
+            raise BrakeLost(f"handbrake unreachable: {exc}") from exc
+        if r.status_code >= 400:
+            raise BrakeLost(f"handbrake error {r.status_code}")
+        data: dict[str, Any] = r.json()
+        return data

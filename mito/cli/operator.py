@@ -26,6 +26,14 @@ class Operator(Protocol):
     def autonomy_set(self, signed: dict[str, Any]) -> str: ...
     def integrity(self) -> dict[str, Any]: ...
     def audit_tail(self, n: int) -> list[dict[str, Any]]: ...
+    def vault_add(self, handle: str, secret: str, note: str = "") -> str: ...
+    def vault_list(self) -> list[dict[str, Any]]: ...
+    def vault_revoke(self, handle: str) -> bool: ...
+    def rest(self) -> dict[str, Any]: ...
+    def ledger_topup(self, atp: float) -> dict[str, Any]: ...
+    def ledger_confirm(self, signed: dict[str, Any]) -> dict[str, Any]: ...
+    def ledger_snapshot(self) -> dict[str, Any]: ...
+    def dashboard_ticket(self) -> str: ...
 
 
 class LocalOperator:
@@ -67,6 +75,33 @@ class LocalOperator:
 
     def audit_tail(self, n: int) -> list[dict[str, Any]]:
         return [r.__dict__ for r in self.hb.audit_tail(n)]
+
+    def vault_add(self, handle: str, secret: str, note: str = "") -> str:
+        name = self.hb.vault.add(handle, secret, note=note)
+        self.hb.audit.append("vault.add", {"handle": name, "source": "cli"})
+        return name
+
+    def vault_list(self) -> list[dict[str, Any]]:
+        return [h.to_dict() for h in self.hb.vault.list_handles()]
+
+    def vault_revoke(self, handle: str) -> bool:
+        return self.hb.vault.revoke(handle)
+
+    def rest(self) -> dict[str, Any]:
+        self.hb.rest(by="cli")
+        return self.hb.state()
+
+    def ledger_topup(self, atp: float) -> dict[str, Any]:
+        return self.hb.ledger_topup(atp, by="cli")
+
+    def ledger_confirm(self, signed: dict[str, Any]) -> dict[str, Any]:
+        return self.hb.ledger_confirm(signed)
+
+    def ledger_snapshot(self) -> dict[str, Any]:
+        return self.hb.ledger_snapshot()
+
+    def dashboard_ticket(self) -> str:
+        return self.hb.issue_dashboard_ticket()
 
 
 class HttpOperator:
@@ -124,6 +159,31 @@ class HttpOperator:
 
     def audit_tail(self, n: int) -> list[dict[str, Any]]:
         return list(self._get(f"/audit/tail?n={n}")["records"])
+
+    def vault_add(self, handle: str, secret: str, note: str = "") -> str:
+        data = self._post("/vault/add", {"handle": handle, "secret": secret, "note": note})
+        return str(data["handle"])
+
+    def vault_list(self) -> list[dict[str, Any]]:
+        return list(self._get("/vault/list")["handles"])
+
+    def vault_revoke(self, handle: str) -> bool:
+        return bool(self._post("/vault/revoke", {"handle": handle})["revoked"])
+
+    def rest(self) -> dict[str, Any]:
+        return self._post("/rest")
+
+    def ledger_topup(self, atp: float) -> dict[str, Any]:
+        return self._post("/ledger/topup", {"atp": atp})
+
+    def ledger_confirm(self, signed: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/ledger/confirm", signed)
+
+    def ledger_snapshot(self) -> dict[str, Any]:
+        return self._get("/ledger")
+
+    def dashboard_ticket(self) -> str:
+        return str(self._post("/dashboard/ticket")["ticket"])
 
 
 def handbrake_url() -> str:
