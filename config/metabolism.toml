@@ -1,5 +1,5 @@
 # Metabolism (DESIGN §6). Budget limits here are hash-pinned together with policy/.
-# Phase 0 DRAFT — defaults to be confirmed by the operator.
+# Operator-confirmed 2026-09-24 (Phase 1 go).
 schema_version = 1
 
 [atp]
@@ -9,6 +9,8 @@ wake_threshold = 3000
 min_topup = 100
 
 [budgets_usd]
+# per_call_max / per_task apply to every tier (local included, priced via local_pricing).
+# per_hour / per_day / per_month_cloud bound CLOUD spend (L2+L3) — real money.
 per_call_max = 0.05
 per_task = 0.25
 per_hour = 0.25

@@ -4,7 +4,8 @@ A self-hosted, cost-frugal, self-improving autonomous agent harness that pays fo
 (its *metabolism*), looks for legal ways to earn money, and is structurally incapable of removing
 its own brakes.
 
-Status: **Phase 0 — design only.** No product code yet. Read, in order:
+Status: **Phase 1 complete** — Handbrake core + fake-model loop. Next: Phase 2 (sandbox and
+toolbelt). Read, in order:
 
 1. [`CLAUDE.md`](CLAUDE.md) — non-negotiables, commands, layout, definition of done.
 2. [`docs/DESIGN.md`](docs/DESIGN.md) — architecture and every subsystem.
@@ -22,6 +23,8 @@ Status: **Phase 0 — design only.** No product code yet. Read, in order:
 # PowerShell / fish / bash — identical
 uv sync --all-groups
 just check
+uv run mito init
+# see docs/RUNBOOK.md for up / halt / approve
 ```
 
 Requires: Python 3.12+ via `uv`, `just`, Docker (Linux containers) for any code-executing tool.

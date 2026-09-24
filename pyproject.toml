@@ -48,8 +48,10 @@ src = ["mito", "handbrake", "evals"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S", "N", "ASYNC", "T20"]
-# S101: assert is fine in tests; T20: no print outside the CLI.
-per-file-ignores = { "**/tests/**" = ["S101", "T20"], "evals/**" = ["S101", "T20"], "mito/cli/**" = ["T20"] }
+# N818: exception names are domain vocabulary from DESIGN.md (UnpluggedWire, BrakeLost, ...).
+ignore = ["N818"]
+# S101: assert is fine in tests; T20: no print outside the operator/runtime entry points.
+per-file-ignores = { "**/tests/**" = ["S101", "T20"], "evals/**" = ["S101", "T20", "ASYNC240"], "mito/cli/**" = ["T20"], "mito/runtime_main.py" = ["T20"], "handbrake/api/server.py" = ["T20"] }
 
 [tool.mypy]
 python_version = "3.12"

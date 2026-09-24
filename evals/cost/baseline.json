@@ -1,0 +1,25 @@
+{
+ "unit": "usd",
+ "cases": {
+  "plain-answer": 3.14e-07,
+  "t0-roundtrip": 6.28e-07,
+  "parallel-reads": 6.28e-07,
+  "status-tool": 6.28e-07,
+  "bad-tz-is-instruction": 6.28e-07,
+  "malformed-json": 6.28e-07,
+  "unknown-tool": 6.28e-07,
+  "invalid-args": 6.28e-07,
+  "t3-asks-at-a1": 6.28e-07,
+  "t3-runs-after-approval": 6.28e-07,
+  "t4-asks-even-at-a2": 6.28e-07,
+  "t5-denied": 6.28e-07,
+  "a0-simulates": 6.28e-07,
+  "untrusted-taint": 6.28e-07,
+  "trifecta-third-leg-asks": 9.42e-07,
+  "step-budget": 6.28e-07,
+  "no-progress": 1.256e-06,
+  "write-budget": 6.28e-07,
+  "halt-mid-turn": 3.14e-07,
+  "integrity-freeze-blocks-external": 9.42e-07
+ }
+}

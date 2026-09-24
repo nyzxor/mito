@@ -104,4 +104,4 @@ in the repo.
 
 Each phase ends with: tests green → PT-BR report (what was built, which tests prove it, what is
 still risky, what the phase's model runs cost, next decision) → wait for the operator's "go".
-Current phase: **0 (design)**. Next: **1 Handbrake core**.
+Current phase: **1 (Handbrake core) complete**. Next: **2 Sandbox and toolbelt**.

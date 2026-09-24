@@ -3,7 +3,7 @@ schema_version = 1
 
 [T0]
 description = "read-only, no effects"
-tools = ["time", "status", "ledger.read", "memory.search", "memory.read", "skills.list", "skills.read", "tool_search"]
+tools = ["time", "status", "result.more", "ledger.read", "memory.search", "memory.read", "skills.list", "skills.read", "tool_search"]
 
 [T1]
 description = "sandbox-local, reversible"

@@ -1,6 +1,7 @@
 # MITO — Design
 
-Status: Phase 0 draft (no product code yet). Owner: the operator (Guilherme). Last updated: 2026-09-18.
+Status: Phase 1 complete (Handbrake core + fake-model loop). Owner: the operator (Guilherme).
+Last updated: 2026-09-24.
 
 MITO is a self-hosted, cost-frugal, self-improving autonomous agent **harness** with an economic
 metabolism and a deterministic, out-of-reach **Handbrake**. This document is the single source of
@@ -243,7 +244,7 @@ taint, never remove it).
 ### 5.5 Budget governor
 
 Caps per call, task, hour, day and month, enforced in the model gateway and the tool gate, not in
-the prompt. Proposed defaults (to be confirmed by the operator): **$0.25/task, $1.00/day,
+the prompt. Operator-confirmed defaults (2026-09-24): **$0.25/task, $1.00/day,
 $15/month cloud spend, ≤5 frontier-tier (L3) calls/day.** Pre-flight estimate (prompt tokens ×
 price + max_tokens × price), post-call reconciliation from `usage`, no-progress detector (same
 tool+args hash twice → error-as-instruction; three times → stop), circuit breakers with
@@ -516,7 +517,16 @@ what the phase's model runs cost, next decision) and the operator's "go".
 0 Recon & design → 1 Handbrake core → 2 Sandbox & toolbelt → 3 Metabolism → 4 Memory, skills,
 MCP → 5 Pulse & channels → 6 Evals, evolution, playbooks → 7 Hardening & deploy.
 
-## 16. Open decisions
+## 16. Operator decisions (Phase 0 → 1)
 
-See the questions at the end of the Phase 0 report and `docs/adr/` entries with status
-`proposed`.
+Accepted 2026-09-24 with the Phase 1 "go":
+
+- Hybrid model stack (ADR-0004) and hybrid egress (ADR-0005, Rust CONNECT proxy in Phase 2).
+- Budgets and ATP as in `config/metabolism.toml` (1,000 ATP = US$1; local priced at
+  300 W GPU + 120 W host, US$0.15/kWh).
+- Operator commands signed with Ed25519 in the OS keyring (`mito init`).
+- Email: Phase 4, dedicated mailbox, `email.draft` yes, `email.send` only to approved recipients.
+- Operator chat channel (Phase 5): Telegram first.
+- Production host: Dokploy VPS compose; Windows/Arch/Debian remain DEV MODE.
+
+Still `proposed`: ADR-0010 (dashboard stack).

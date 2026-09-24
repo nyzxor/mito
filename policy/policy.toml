@@ -40,6 +40,12 @@ tool = "http.post"
 where = { url_host_not_in_allowlist = true }
 reason = "writes only to egress.toml allow_write destinations"
 
+[[rule]]
+kind = "deny"
+tool = "git.push"
+where = { repo_not_in = "config:own_repos" }
+reason = "git.push only to the operator's own repos (config/mito.toml [own_repos])"
+
 # ---- ask rules ----
 [[rule]]
 kind = "ask"
@@ -53,11 +59,7 @@ where = { metabolic_state_in = ["FRUGAL", "STARVING"] }
 reason = "no subagents when frugal"
 
 # ---- allow rules ----
-[[rule]]
-kind = "allow"
-tool = "git.push"
-where = { repo_in = "config:own_repos" }
-reason = "own repos/branches only (T3, still subject to autonomy level)"
+# (none yet: allow rules override a tier's `ask` default but never the autonomy ladder)
 
 [trifecta]
 # Rule of Two (ADR-0016). Max two of A (untrusted in), B (sensitive data), C (external effect).
