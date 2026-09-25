@@ -1,6 +1,6 @@
 """MITO operator CLI (ADR-0013). Plain argparse, `--json` on every command.
 
-Phase 5 implements: pulse, dashboard, Telegram operator commands, email draft/send. Later: evolve.
+Phase 7 implements: compose deploy (loopback, separate user, egress-only route).
 """
 
 from __future__ import annotations
@@ -18,11 +18,9 @@ from handbrake.paths import MitoPaths, detect_dev_mode, repo_root
 
 from mito import __version__
 
-PHASE = 5
+PHASE = 7
 
-NOT_YET: dict[str, str] = {
-    "evolve": "Phase 6 (evolution)",
-}
+NOT_YET: dict[str, str] = {}
 
 
 def _out(ns: argparse.Namespace, data: Any, text: str | None = None) -> None:
@@ -460,6 +458,48 @@ def cmd_dashboard(ns: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_evolve(ns: argparse.Namespace) -> int:
+    from mito.evolve.store import review
+
+    if not ns.args or ns.args[0] != "review":
+        print("usage: mito evolve review", file=sys.stderr)
+        return 2
+    rows = review(_paths().runtime / "evolve", state="THRIVING", today_count=0)
+    text = "\n".join(f"{r['kind']:<6} {r['tier']} {r['path']} — {r['reason']}" for r in rows)
+    _out(ns, rows, text or "inbox empty")
+    return 0
+
+
+def cmd_playbook(ns: argparse.Namespace) -> int:
+    from handbrake.paths import repo_root
+
+    from mito.playbooks.load import blacklist_categories, load_dir
+    from mito.playbooks.runner import run_l0
+
+    root = repo_root()
+    books = load_dir(root / "playbooks", categories=blacklist_categories(root / "policy"))
+    verb = ns.args[0] if ns.args else "list"
+    if verb == "list":
+        _out(
+            ns,
+            [b.to_dict() for b in books],
+            "\n".join(
+                f"{b.name:<20} {'on' if b.enabled else 'off':<4} {b.cron}" for b in books
+            ),
+        )
+        return 0
+    if verb == "run" and len(ns.args) >= 2:
+        book = next((b for b in books if b.name == ns.args[1]), None)
+        if book is None:
+            print(f"unknown playbook {ns.args[1]}", file=sys.stderr)
+            return 2
+        out = run_l0(book, state="NORMAL", daily_burn_atp=0)
+        _out(ns, out)
+        return 0
+    print("usage: mito playbook list | run <name>", file=sys.stderr)
+    return 2
+
+
 def cmd_not_yet(ns: argparse.Namespace) -> int:
     print(f"mito {ns.command}: not implemented yet — {NOT_YET[ns.command]}", file=sys.stderr)
     return 2
@@ -492,7 +532,8 @@ _COMMANDS: dict[str, tuple[str, Any]] = {
     "autonomy": ("autonomy set <A0|A1|A2> — signed operator command", cmd_autonomy),
     "rest": ("enter Deep Rest (no model calls until wake / threshold)", cmd_rest),
     "ledger": ("ledger | confirm <id> | topup <atp> | claims", cmd_ledger),
-    "evolve": ("evolve review", cmd_not_yet),
+    "evolve": ("evolve review — re-judge the proposal inbox", cmd_evolve),
+    "playbook": ("playbook list | run <name>  (L0, no model)", cmd_playbook),
     "skills": ("skills quarantine list|approve <name>", cmd_skills),
     "memory": ("memory confirm <name> — lift a quarantined fact", cmd_memory),
     "vault": ("vault add <handle> | list | revoke <handle>  (secret on stdin)", cmd_vault),

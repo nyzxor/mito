@@ -43,6 +43,7 @@ WIRES: dict[str, tuple[str, str]] = {
     "Skill.granted_tools": (r"\.granted_tools\(", "mito/skills_rt/loader.py"),
     "McpRegistry.call": (r"\bregistry\.call\(", "mito/mcp/registry.py"),
     "MemoryStore.write": (r"\bstore\.write\(", "mito/memory/store.py"),
+    "PromotionGate.admit": (r"\bgate\.admit\(", "mito/evolve/gate.py"),
 }
 
 

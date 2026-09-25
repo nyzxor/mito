@@ -1,0 +1,81 @@
+# Production shape (DESIGN §14). No public ports. Host control is loopback only.
+# The runtime reaches the Handbrake on the internal network. Egress-proxy is the only
+# service attached to a network with an external route. Cloudflare Tunnel / SSH stay
+# outside this file.
+
+name: mito
+
+networks:
+  internal:
+    internal: true
+  egress:
+    internal: false
+
+volumes:
+  mito-home:
+
+services:
+  handbrake:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "65532:65532"
+    networks: [internal]
+    volumes:
+      - mito-home:/var/lib/mito
+    environment:
+      MITO_HOME: /var/lib/mito
+      MITO_DEV_MODE: "0"
+      # Inside the container the API must be reachable by the runtime. The host publish
+      # below is loopback-only. This flag is refused outside compose (see parse_bind).
+      MITO_ALLOW_NONLOOPBACK_BIND: "1"
+      MITO_HANDBRAKE_BIND: "0.0.0.0:8710"
+    ports:
+      - "127.0.0.1:8710:8710"
+    command: ["up", "--no-runtime"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1
+
+  runtime:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "65532:65532"
+    networks: [internal]
+    volumes:
+      - mito-home:/var/lib/mito
+    environment:
+      MITO_HOME: /var/lib/mito
+      MITO_DEV_MODE: "0"
+      MITO_HANDBRAKE_URL: http://handbrake:8710
+      MITO_RUNTIME_TOKEN: ""
+    # Token is injected by the Handbrake supervisor in-process. This service is the
+    # compose stand-in: leave the token empty in git and set it from the operator env
+    # file that is not committed. No host ports.
+    entrypoint: ["python", "-m", "mito.runtime_main"]
+    depends_on: [handbrake]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1
+
+  egress-proxy:
+    build:
+      context: ../egress-proxy
+      dockerfile: Dockerfile
+    user: "65532:65532"
+    networks: [internal, egress]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # No published ports. Outbound route is the `egress` network.

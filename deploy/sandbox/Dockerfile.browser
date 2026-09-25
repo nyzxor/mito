@@ -1,0 +1,7 @@
+# Browser container (ADR-0006). No host network. Egress only via the CONNECT proxy.
+FROM python:3.12-slim-bookworm
+RUN useradd --uid 65532 --user-group --create-home mito
+USER 65532:65532
+ENV HTTPS_PROXY=http://egress-proxy:8711
+ENV HTTP_PROXY=http://egress-proxy:8711
+WORKDIR /workspace

@@ -1,6 +1,6 @@
 # MITO — Runbook
 
-Status: Phase 5. Filled in per phase; complete by Phase 7.
+Status: Phase 7.
 
 State lives in `$MITO_HOME` (`control/` Handbrake-owned, `runtime/` agent-owned). Default
 `~/.mito`. Never commit that directory.
@@ -121,6 +121,20 @@ Unknown tools fail boot. Advertised tools == granted tools.
 Allowlist only: `config/mcp.toml`. Empty by default. Unknown servers are refused. Live
 JSON-RPC is not wired yet — `mcp.read` fails closed and tags any future output UNTRUSTED.
 
+## Playbooks and evolution
+
+```
+uv run mito playbook list
+uv run mito playbook run cost-optimizer
+uv run mito evolve review
+```
+
+`cost-optimizer` is the only enabled playbook and it runs at L0 (no model). `bounty-scout` and
+`gig-fulfillment` stay off until you set `enabled = true`. Evolution may write only `skills/`
+and `prompts/`, at most 3 T0–T2 changes a day. T3+ stays in the inbox until you approve it.
+`handbrake/`, `policy/`, `evals/safety/` and budgets are immutable to evolution. FRUGAL and
+below block the loop.
+
 ## Pulse
 
 The runtime decides on the metabolism interval (`config/metabolism.toml` `[pulse]`). No signal
@@ -166,6 +180,13 @@ A1). A3 does not exist.
 Stop MITO. Delete `$MITO_HOME/control/operator.pub` and the keyring entry (or
 `MITO_OPERATOR_KEY_FILE`), then `mito init` on a stopped system and `mito policy sign`. Physical
 access required. (`mito init --rekey` is not implemented yet.)
+
+## Compose
+
+Production and local Linux use `deploy/docker-compose.yaml` and
+`deploy/docker-compose.dev.yaml`. The Handbrake port on the host is `127.0.0.1:8710`.
+Set `MITO_RUNTIME_TOKEN` in an untracked env file before starting the runtime service.
+Do not publish `0.0.0.0`. Do not mount `docker.sock`.
 
 ## Platform notes
 

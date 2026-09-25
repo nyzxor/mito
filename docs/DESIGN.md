@@ -1,6 +1,6 @@
 # MITO — Design
 
-Status: Phase 5 complete (pulse, dashboard, Telegram, email allowlist). Owner: the operator (Guilherme).
+Status: Phase 7 complete (compose deploy, non-root, loopback control). Owner: the operator (Guilherme).
 Last updated: 2026-09-24.
 
 MITO is a self-hosted, cost-frugal, self-improving autonomous agent **harness** with an economic

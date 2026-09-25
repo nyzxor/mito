@@ -4,8 +4,8 @@ A self-hosted, cost-frugal, self-improving autonomous agent harness that pays fo
 (its *metabolism*), looks for legal ways to earn money, and is structurally incapable of removing
 its own brakes.
 
-Status: **Phase 5 complete** — pulse, localhost dashboard, Telegram operator channel, email
-draft/send allowlist. Next: Phase 6 (evals, evolution, playbooks). Read, in order:
+Status: **Phase 7 complete** — compose deploy, loopback-only control, non-root images.
+The phased plan is done. Read, in order:
 
 1. [`CLAUDE.md`](CLAUDE.md) — non-negotiables, commands, layout, definition of done.
 2. [`docs/DESIGN.md`](docs/DESIGN.md) — architecture and every subsystem.

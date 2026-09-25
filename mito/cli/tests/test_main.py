@@ -141,9 +141,14 @@ def test_approve_lists_and_resolves_prefix(env: Path, capsys: pytest.CaptureFixt
     assert hb.approvals.status(card.action_hash) == "approved"
 
 
-def test_not_yet_commands_fail_loudly(env: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["evolve", "review"]) == 2
-    assert "Phase 6" in capsys.readouterr().err
+def test_evolve_review_and_playbook_list(env: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["init"]) == 0
+    capsys.readouterr()
+    assert cli.main(["evolve", "review"]) == 0
+    assert "empty" in capsys.readouterr().out
+    assert cli.main(["playbook", "list"]) == 0
+    listed = capsys.readouterr().out
+    assert "cost-optimizer" in listed and "bounty-scout" in listed
 
 
 def test_skills_quarantine_list_and_approve(

@@ -1,7 +1,7 @@
 # MITO — Threat Model
 
-Status: Phase 5 — pulse (no model without a signal), localhost dashboard, Telegram operator
-commands (allowlist + halt nonce), email draft/send allowlist. Phase 2–4 tests still live in
+Status: Phase 7 — compose contract (loopback publish, non-root, egress-only external
+route) in `handbrake/tests/test_deploy_contract.py`. Earlier phase tests still live in
 `handbrake/tests/`. The Rust
 CONNECT proxy is scaffolded (`egress-proxy/`); `cargo test` is required where Rust is installed.
 Companion to `DESIGN.md`.

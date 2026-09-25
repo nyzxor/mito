@@ -105,4 +105,4 @@ in the repo.
 
 Each phase ends with: tests green → PT-BR report (what was built, which tests prove it, what is
 still risky, what the phase's model runs cost, next decision) → wait for the operator's "go".
-Current phase: **5 (Pulse and channels) complete**. Next: **6 Evals, evolution, playbooks**.
+Current phase: **7 (Hardening and deploy) complete**. The phased plan in DESIGN §15 is done.
